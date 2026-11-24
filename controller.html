@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Sofa Arcade controller</title>
+<meta name="theme-color" content="#123047">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/controller.css?v=1">
+</head>
+<body>
+<main id="join" class="join">
+  <form id="form" class="card" novalidate>
+    <h1>Join the game</h1>
+    <label for="name">Your name</label>
+    <input id="name" maxlength="12" autocomplete="nickname" placeholder="Player" enterkeyhint="go">
+    <label for="code">Code on the TV</label>
+    <input id="code" maxlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false" inputmode="text" enterkeyhint="go">
+    <p id="error" class="error" role="alert"></p>
+    <button id="go" type="submit">Join</button>
+  </form>
+</main>
+
+<main id="pad" class="pad" hidden>
+  <header class="bar">
+    <span id="badge" class="badge">1</span>
+    <span class="who"><b id="pname"></b> <span id="ptitle"></span></span>
+    <button id="full" class="small" type="button" hidden>Full screen</button>
+    <button id="leave" class="small" type="button">Leave</button>
+  </header>
+  <div id="stick" class="stick" aria-label="Joystick">
+    <div id="base" class="base"><div id="knob" class="knob"></div><span id="stick-label" class="stick-label">Move</span></div>
+  </div>
+  <div id="buttons" class="buttons">
+    <button type="button" class="btn y" data-b="3"><b>Y</b><span></span></button>
+    <button type="button" class="btn x" data-b="2"><b>X</b><span></span></button>
+    <button type="button" class="btn b" data-b="1"><b>B</b><span></span></button>
+    <button type="button" class="btn a" data-b="0"><b>A</b><span></span></button>
+  </div>
+  <div id="cover" class="cover" role="status" hidden>
+    <div><h2 id="cover-title"></h2><p id="cover-text"></p><button id="cover-leave" type="button">Leave</button></div>
+  </div>
+  <div id="toast" class="toast" role="status" hidden></div>
+</main>
+
+<noscript>The controller needs JavaScript. Turn it on and reload.</noscript>
+<script src="vendor/peerjs.min.js?v=1"></script>
+<script src="js/config.js?v=1"></script>
+<script src="js/protocol.js?v=1"></script>
+<script src="js/controller.js?v=1"></script>
+</body>
+</html>

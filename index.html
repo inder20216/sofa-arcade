@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sofa Arcade</title>
+<meta name="description" content="Play on the TV. Your phone is the controller.">
+<meta name="theme-color" content="#123047">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/tv.css?v=1">
+</head>
+<body>
+<main id="home" class="home">
+  <section class="pair" aria-labelledby="pair-title">
+    <h2 id="pair-title">Scan to join</h2>
+    <div id="qr" class="qr" role="img" aria-label="QR code that opens the controller on a phone"></div>
+    <p class="code-label">or open <span id="join-url"></span> and enter</p>
+    <p id="code" class="code">······</p>
+    <p id="net" class="net" role="status"></p>
+  </section>
+
+  <section class="side">
+    <h1>Sofa Arcade</h1>
+    <p class="lead">Play on the TV. Your phone is the controller.</p>
+    <ul id="seats" class="seats" aria-label="Players"></ul>
+    <div id="games" class="games"></div>
+    <p class="hint">Choose with the TV remote or a connected phone. Press <b>A</b> or OK to start.</p>
+  </section>
+</main>
+
+<div id="stage" class="stage" hidden>
+  <canvas id="canvas" width="1280" height="720"></canvas>
+</div>
+
+<div id="overlay" class="overlay" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+    <h2 id="sheet-title"></h2>
+    <p id="sheet-text"></p>
+    <div id="sheet-actions" class="actions"></div>
+  </div>
+</div>
+
+<div id="phone-notice" class="notice" hidden>
+  <div>
+    <h2>This page is the TV screen</h2>
+    <p>Open it on a TV or laptop, then scan its QR code with this phone.</p>
+    <p><a class="notice-btn" href="controller.html">Enter a code on this phone</a></p>
+    <p><button id="notice-close" class="notice-link" type="button">Show the TV screen here anyway</button></p>
+  </div>
+</div>
+
+<noscript>Sofa Arcade needs JavaScript. Turn it on and reload.</noscript>
+<script src="vendor/peerjs.min.js?v=1"></script>
+<script src="vendor/qrcode.js?v=1"></script>
+<script src="js/config.js?v=1"></script>
+<script src="js/protocol.js?v=1"></script>
+<script src="js/tv/sound.js?v=1"></script>
+<script src="js/tv/room.js?v=1"></script>
+<script src="js/games/registry.js?v=1"></script>
+<script src="js/games/air-hockey.js?v=1"></script>
+<script src="js/games/controller-check.js?v=1"></script>
+<script src="js/tv/app.js?v=1"></script>
+</body>
+</html>

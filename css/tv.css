@@ -1,0 +1,67 @@
+/* TV screen. Root font size is set in app.js so the layout is always 80 x 45 rem.
+   Kept to CSS that older TV browsers understand (no flex gap, inset, aspect-ratio). */
+@font-face { font-family: "Barlow Condensed"; font-weight: 600; font-display: swap; src: url(../fonts/barlow-condensed-latin-600-normal.woff2) format("woff2"); }
+@font-face { font-family: "Barlow Condensed"; font-weight: 700; font-display: swap; src: url(../fonts/barlow-condensed-latin-700-normal.woff2) format("woff2"); }
+@font-face { font-family: "Barlow"; font-weight: 500; font-display: swap; src: url(../fonts/barlow-latin-500-normal.woff2) format("woff2"); }
+@font-face { font-family: "Barlow"; font-weight: 600; font-display: swap; src: url(../fonts/barlow-latin-600-normal.woff2) format("woff2"); }
+:root {
+  --rink: #123047; --rink-deep: #0b2030; --line: #2c5068; --ice: #eaf3f6; --ink: #12303f;
+  --text: #ffffff; --soft: #b4ccda; --focus: #ffc53d;
+  --head: "Barlow Condensed", "Arial Narrow", sans-serif; --body: "Barlow", Arial, sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; overflow: hidden; background: var(--rink); color: var(--text); font-family: var(--body); font-weight: 500; }
+h1, h2, p, ul { margin: 0; padding: 0; }
+h1, h2 { font-family: var(--head); font-weight: 700; line-height: 1; }
+button { font: inherit; color: inherit; border: 0; cursor: pointer; }
+b { font-weight: 600; }
+
+.home { position: absolute; left: 50%; top: 50%; width: 80rem; height: 45rem; margin: -22.5rem 0 0 -40rem; padding: 3rem 4rem; display: flex; }
+.pair { width: 23rem; flex: none; background: var(--ice); color: var(--ink); padding: 2rem 2rem 1.5rem; text-align: center; display: flex; flex-direction: column; align-items: center; }
+.pair h2 { font-size: 2.6rem; margin-bottom: 1.2rem; }
+.qr { width: 19rem; height: 19rem; background: #fff; display: flex; align-items: center; justify-content: center; }
+.qr svg { width: 100%; height: 100%; display: block; }
+.qr.dim { opacity: .18; }
+.code-label { margin-top: 1.2rem; font-size: 1.15rem; line-height: 1.35; overflow-wrap: anywhere; word-break: break-word; }
+.code-label span { font-weight: 600; }
+.code { font-family: var(--head); font-weight: 700; font-size: 4rem; letter-spacing: .12em; margin-right: -.12em; line-height: 1.15; }
+.net { font-size: 1.15rem; line-height: 1.3; margin-top: auto; }
+.net.bad { color: #a3202c; font-weight: 600; }
+
+.side { flex: 1; min-width: 0; margin-left: 4rem; display: flex; flex-direction: column; }
+.side h1 { font-size: 5rem; }
+.lead { font-size: 1.7rem; color: var(--soft); margin-top: .5rem; }
+.seats { list-style: none; display: flex; margin: 2rem -.5rem 0; }
+.seats li { flex: 1; min-width: 0; margin: 0 .5rem; }
+.seat { display: block; width: 100%; text-align: left; background: var(--rink-deep); padding: .9rem 1rem; min-height: 6.4rem; outline: none; }
+.seat .num { display: inline-block; width: 2rem; height: 2rem; line-height: 2rem; border-radius: 50%; text-align: center; font-family: var(--head); font-weight: 700; font-size: 1.4rem; background: var(--line); color: var(--soft); }
+.seat .who { display: block; font-family: var(--head); font-weight: 600; font-size: 1.7rem; line-height: 1.15; margin-top: .4rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.seat .how { display: block; font-size: 1.1rem; color: var(--soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.seat.empty .who { color: var(--soft); }
+
+.games { display: flex; margin: 1.6rem -.75rem 0; }
+.game { flex: 1; min-width: 0; margin: 0 .75rem; padding: 0; text-align: left; background: var(--rink-deep); outline: none; }
+.game canvas { display: block; width: 100%; height: 11rem; }
+.game .name { display: block; font-family: var(--head); font-weight: 700; font-size: 2.2rem; padding: .8rem 1.2rem 0; }
+.game .blurb { display: block; font-size: 1.2rem; color: var(--soft); padding: .1rem 1.2rem 1rem; }
+.seat:focus, .game:focus, .actions button:focus { box-shadow: 0 0 0 .35rem var(--focus); position: relative; }
+.hint { margin-top: auto; font-size: 1.2rem; color: var(--soft); }
+
+.stage { position: fixed; left: 0; top: 0; width: 100%; height: 100%; background: var(--rink); display: flex; align-items: center; justify-content: center; }
+.stage canvas { width: 80rem; height: 45rem; display: block; }
+
+.overlay { position: fixed; left: 0; top: 0; width: 100%; height: 100%; background: rgba(6, 20, 31, .72); display: flex; align-items: center; justify-content: center; }
+.sheet { background: var(--ice); color: var(--ink); width: 40rem; max-width: 90%; padding: 3rem; text-align: center; }
+.sheet h2 { font-size: 4.2rem; overflow-wrap: anywhere; }
+.sheet p { font-size: 1.6rem; line-height: 1.35; margin-top: .8rem; }
+.actions { display: flex; justify-content: center; margin: 2rem -.5rem 0; }
+.actions button { margin: 0 .5rem; padding: .8rem 2rem; background: var(--ink); color: #fff; font-family: var(--head); font-weight: 600; font-size: 1.8rem; outline: none; }
+.actions button:focus { box-shadow: 0 0 0 .35rem #c27c00; }
+
+.notice { position: fixed; left: 0; top: 0; width: 100%; height: 100%; background: var(--rink); display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center; font-size: 18px; line-height: 1.45; }
+.notice h2 { font-size: 34px; margin-bottom: 12px; }
+.notice p { margin-top: 16px; max-width: 420px; }
+.notice-btn { display: inline-block; background: var(--focus); color: #2a1c00; font-weight: 600; padding: 14px 22px; text-decoration: none; }
+.notice-link { background: none; text-decoration: underline; padding: 10px; color: var(--soft); }
