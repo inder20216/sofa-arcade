@@ -36,6 +36,7 @@
       Sound.play('join');
       room.buzz(p, [40]);
       if (game) game.playersChanged();
+      if (!returning) Sound.say(p.name + ' joined');
       if (waitingFor === p) {
         waitingFor = null;
         openPause(p.name + ' is back', 'Press A to carry on.');
@@ -159,15 +160,25 @@
       fps: function () { return fps; },
       buzz: function (p, pattern) { room.buzz(p, pattern); },
       sound: Sound.play,
+      say: Sound.say,
+      engines: Sound.engines,
       finish: function (r) {
         finished = true;
+        Sound.engines(null);
+        Sound.play('win');
+        Sound.say(r.title, true);
         openSheet(r.title, r.detail, [['Play again', function () { startGame(g); }], ['Home', goHome]], goHome);
       }
     });
     acc = 0;
+    Sound.duck(false);
+    Sound.music(g.music || null);
+    Sound.crowd(g.crowd || 0);
   }
   function endGame() {
     if (game && game.destroy) game.destroy();
+    Sound.engines(null);
+    Sound.crowd(0);
     game = null;
   }
   // The 3D engine is large, so it loads only when a 3D game is first opened.
@@ -207,6 +218,8 @@
   }
   function goHome() {
     endGame();
+    Sound.duck(false);
+    Sound.music('home');
     def = null; paused = false; waitingFor = null; finished = false;
     closeSheet();
     $('stage').hidden = true; $('home').hidden = false;
@@ -216,11 +229,17 @@
   function openPause(title, text) {
     if (!game || finished) return;
     paused = true;
+    Sound.engines(null);
+    Sound.duck(true);
     openSheet(title || 'Paused', text || '', [
-      ['Resume', resume], ['Restart', function () { startGame(def); }], ['Home', goHome]
+      ['Resume', resume], ['Restart', function () { startGame(def); }], ['Home', goHome],
+      [Sound.get('muted') ? 'Sound on' : 'Mute', function () {
+        Sound.set('muted', !Sound.get('muted'));
+        this.textContent = Sound.get('muted') ? 'Sound on' : 'Mute';
+      }]
     ], resume);
   }
-  function resume() { paused = false; waitingFor = null; closeSheet(); }
+  function resume() { Sound.duck(false); paused = false; waitingFor = null; closeSheet(); }
 
   /* ---------- Sheets and focus ---------- */
   function openSheet(title, text, actions, back) {
@@ -308,8 +327,11 @@
     });
   }
   document.addEventListener('keydown', function (e) {
+    var k = e.keyCode, first = !unlockedOnce && !$('sound-chip').hidden;
+    unlockedOnce = true;
     Sound.unlock();
-    var k = e.keyCode;
+    // The first OK press in a game only turns the sound on.
+    if (first && k === 13 && !inMenu()) { e.preventDefault(); return; }
     if (e.ctrlKey || e.altKey || e.metaKey) return;
     if (k === 27 || k === 8 || k === 461 || k === 10009 || e.key === 'GoBack') { e.preventDefault(); back(); return; }
     if (!inMenu()) { if (k === 13 || k === 80 || k === 415 || k === 19) { e.preventDefault(); openPause(); } return; }
@@ -318,7 +340,30 @@
       move(k === 39 ? 1 : k === 37 ? -1 : 0, k === 40 ? 1 : k === 38 ? -1 : 0);
     } else if (k === 13 && navItems().indexOf(document.activeElement) < 0) { e.preventDefault(); ensureFocus(); }
   });
-  document.addEventListener('pointerdown', Sound.unlock);
+  ['pointerdown', 'click', 'touchend'].forEach(function (n) { document.addEventListener(n, Sound.unlock); });
+
+  /* ---------- Sound settings ---------- */
+  var unlockedOnce = false;
+  var AUDIO = [['muted', 'Sound', true], ['music', 'Music', false], ['voice', 'Announcer', false]];
+  function buildAudio() {
+    AUDIO.forEach(function (a) {
+      var b = el('button', 'toggle');
+      b.type = 'button';
+      b.setAttribute('data-nav', '');
+      b.onclick = function () { Sound.set(a[0], !Sound.get(a[0])); };
+      $('audio').appendChild(b);
+    });
+    Sound.listen(refreshAudio);
+    refreshAudio();
+  }
+  function refreshAudio() {
+    AUDIO.forEach(function (a, i) {
+      var on = a[2] ? !Sound.get(a[0]) : Sound.get(a[0]), b = $('audio').children[i];
+      b.textContent = a[1] + (on ? ' on' : ' off');
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    $('sound-chip').hidden = !Sound.locked() || Sound.get('muted');
+  }
 
   /* ---------- Frame ---------- */
   var last = performance.now(), acc = 0, lastSecond = 0;
@@ -343,6 +388,8 @@
     if (now - lastSecond > 500) {
       lastSecond = now;
       if (!game) refreshPlayers();
+      $('sound-chip').hidden = !Sound.locked() || Sound.get('muted');
+      $('sound-chip').className = 'sound-chip' + (game ? '' : ' up');
       if (waitingFor && !$('overlay').hidden) {
         var left = Math.max(0, Math.ceil(window.SA_CONFIG.holdSeatSeconds - (performance.now() - waitingFor.lostAt) / 1000));
         $('sheet-text').hidden = false;
@@ -358,6 +405,9 @@
   fit();
   buildSeats();
   buildGames();
+  buildAudio();
+  Sound.music('home');
+  Sound.unlock();   // works at once on browsers that allow it
   refreshPlayers();
   room.layout = Object.assign({ t: 'layout' }, HOME_LAYOUT);
   ensureFocus();

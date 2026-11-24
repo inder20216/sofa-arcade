@@ -122,13 +122,14 @@
       }
       if (m.hitWait <= 0 && -rel > 60) {
         m.hitWait = 0.1;
-        api.sound('hit', -rel / 1000);
+        api.sound('hit', -rel / 1000, pan());
         if (m.p) api.buzz(m.p, [18]);
       }
     }
 
+    function pan() { return (puck.x - CX) / 800; }
     function bounce(axis) {
-      if (Math.abs(puck[axis]) > 80) api.sound('wall', Math.abs(puck[axis]) / 1000);
+      if (Math.abs(puck[axis]) > 80) api.sound('wall', Math.abs(puck[axis]) / 1000, pan());
       puck[axis] *= -0.92;
     }
     function walls() {
@@ -162,6 +163,8 @@
         });
         return;
       }
+      var who = mallets.filter(function (m) { return m.team === team; }).map(function (m) { return m.p ? m.p.name : 'Computer'; }).join(' and ');
+      api.say(who + (who.indexOf(' and ') > 0 ? ' score. ' : ' scores. ') + score[0] + ', ' + score[1], true);
       mallets.forEach(place);
       serve(1 - team, 1.6);
     }
@@ -190,7 +193,7 @@
         for (i = 0; i < mallets.length; i++) keepOff(mallets[i], 6);
         return;
       }
-      if (wasWaiting) { wasWaiting = false; api.sound('go'); }
+      if (wasWaiting) { wasWaiting = false; api.sound('whistle'); }
 
       puck.x += puck.vx * dt; puck.y += puck.vy * dt;
       var drag = Math.exp(-dt * 0.32);
@@ -319,6 +322,7 @@
 
   Games.register({
     id: 'air-hockey',
+    music: 'hockey', crowd: 0.8,
     name: 'Air Hockey',
     blurb: '1 to 4 players. First to 7.',
     layout: { title: 'Air Hockey', buttons: ['Smash', '', 'Cheer', 'Pause'], stick: 'Your half', mode: 'pad' },

@@ -39,7 +39,7 @@
     var scene = new THREE.Scene(), table = new THREE.Group(), cam = new THREE.PerspectiveCamera(45, 16 / 9, 10, 4000);
     var coins = [], striker, seats = [], turn = 0, phase = 'aim', clock = TURN_TIME, acc = 0, shotTime = 0, over = false;
     var posX = 0, pull = { x: 0, y: 0 }, wasTouch = false, think = 0, plan = null, angle = 0;
-    var pocketed = [], foul = false, queenBy = null, banner = '', bannerFor = 0, soundWait = 0;
+    var pocketed = [], foul = false, queenBy = null, banner = '', bannerFor = 0, soundWait = 0, spoken = -1;
 
     function disc(r, h, color, ring) {
       var g = Kit3D.merge([
@@ -109,7 +109,7 @@
       striker.in = true; striker.sink = 0; striker.vx = striker.vy = 0;
       if (blocked()) for (var d = 10; d < REACH; d += 10) { posX = d; if (!blocked()) break; posX = -d; if (!blocked()) break; }
       placeStriker();
-      if (human()) { api.note(cur().p, 'Your turn. Pull back and release.'); api.buzz(cur().p, [60]); }
+      if (human()) { api.note(cur().p, 'Your turn. Pull back and release.'); if (seats.length > 1 && n !== spoken) api.say(name(cur()) + '\u2019s turn'); spoken = n; api.buzz(cur().p, [60]); }
     }
     function placeStriker() { var q = turnTo(cur().side, posX, BASE); striker.x = q.x; striker.y = q.y; }
     function blocked() {
@@ -245,6 +245,7 @@
       }
     }
     function settle() {
+      if (foul) api.sound('aww'); else if (pocketed.length) api.sound(pocketed.some(function (k) { return k.kind === 'queen'; }) ? 'cheer' : 'clap');
       var s = cur(), again = false, got = 0, msg = '';
       striker.in = false;
       var queen = pocketed.filter(function (k) { return k.kind === 'queen'; })[0];
@@ -266,7 +267,7 @@
           putBack(coins[0]); queenBy = null; msg = 'Queen not covered. It goes back';
         } else if (got) { again = true; msg = name(s) + ' scores ' + got; }
       }
-      if (msg) say(msg);
+      if (msg) { say(msg); if (foul || /^Queen/.test(msg)) api.say(msg, true); }
       if (!coins.some(function (k) { return k.in; })) return finish();
       begin(again ? turn : (turn + 1) % seats.length);
     }
@@ -274,7 +275,6 @@
       over = true;
       var rank = seats.slice().sort(function (a, b) { return b.score - a.score; });
       var tie = rank.length > 1 && rank[0].score === rank[1].score;
-      api.sound('goal');
       seats.forEach(function (s) { if (s.p) api.buzz(s.p, s === rank[0] ? [80, 60, 160] : [60]); });
       api.finish({
         title: tie ? 'It’s a tie' : name(rank[0]) + ' wins',
@@ -376,7 +376,7 @@
   }
 
   Games.register({
-    id: 'carrom', name: 'Carrom', blurb: 'Classic board in 3D. 1 to 4 players.', is3d: true,
+    id: 'carrom', name: 'Carrom', music: 'carrom', crowd: 0.2, blurb: 'Classic board in 3D. 1 to 4 players.', is3d: true,
     layout: { title: 'Carrom', buttons: ['', 'Right', 'Left', 'Pause'], stick: 'Pull back', mode: 'drag' },
     art: function (c, w, h) {
       c.fillStyle = '#5b3318'; c.fillRect(0, 0, w, h);

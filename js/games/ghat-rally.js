@@ -1,4 +1,6 @@
-/* Ghat Rally: 3D hill-road racing for 1 to 4 players on a split screen. Bikes and cars. */
+/* Ghat Rally: 3D hill-road racing for 1 to 4 players on a split screen. Bikes and cars.
+ * Hitting a rival scores points; three hits knock them down. Most points wins, and places add a bonus.
+ */
 (function () {
   var HALF = 8.5, WALL = 11.5, N = 900, LAPS = 3, FIELD = 4;
   var POINTS = [[0, 0, 0], [140, -10, 0], [270, 20, 5], [385, 105, 13], [405, 235, 15], [315, 330, 9], [205, 300, 4],
@@ -8,6 +10,7 @@
     car: { name: 'Car', top: 63, acc: 18, turn: 1.6, wide: 1.6, shove: 8 }
   };
   var HEAD = '"Barlow Condensed", sans-serif';
+  var HIT = 50, KNOCKOUT = 150, BONUS = [400, 250, 150, 75], HEALTH = 3, DOWN = 1.9, SAFE = 3;
   var PLACE = ['1st', '2nd', '3rd', '4th'];
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
   function mod(a, n) { return ((a % n) + n) % n; }
@@ -158,7 +161,7 @@
     function addRacer(p, i) {
       var r = {
         p: p, i: i, kind: i % 2 ? 'car' : 'bike', ready: !p, t: -7 - i * 6, d: i % 2 ? 3.4 : -3.4, v: 0, psi: 0, vd: 0, lean: 0, wob: 0,
-        shoveWait: 0, hitWait: 0, place: 0, time: 0, skill: 0.9 + (i % 3) * 0.035, lane: (i - 1.5) * 2.2, nav: 0,
+        shoveWait: 0, hitWait: 0, pts: 0, hp: HEALTH, down: 0, safe: 0, swing: 0, pop: '', popFor: 0, place: 0, time: 0, skill: 0.9 + (i % 3) * 0.035, lane: (i - 1.5) * 2.2, nav: 0,
         x: 0, y: 0, z: 0, a: 0, camA: null, cam: new THREE.PerspectiveCamera(64, 1, 0.3, 1800), models: {}
       };
       var color = p ? p.color : CPU[i];
@@ -208,7 +211,14 @@
         gas = r.v < limit; brake = r.v > limit + 6;
         if (r.place) { gas = r.v < 25; brake = r.v > 30; }
       }
+      r.safe = Math.max(0, r.safe - dt); r.swing *= Math.exp(-7 * dt); r.popFor = Math.max(0, r.popFor - dt);
+      if (r.down > 0) {
+        r.down -= dt; gas = brake = false; steer = 0;
+        r.v *= Math.exp(-2.2 * dt); r.psi *= Math.exp(-5 * dt);
+        if (r.down <= 0) { r.down = 0; r.hp = HEALTH; r.safe = SAFE; }
+      } else if (!human && !r.place && r.shoveWait <= 0 && Math.random() < dt * 0.45) attack(r, true);
       var rough = Math.abs(r.d) > HALF;
+      r.gas = !!gas; r.rough = rough;
       if (rough) top *= 0.6;
       if (gas) r.v += spec.acc * Math.max(-1, 1 - Math.pow(r.v / top, 2)) * dt;
       else r.v -= 5 * dt;
@@ -222,6 +232,7 @@
       r.psi += steer * rate * dt - k * ds * 0.6 - r.psi * 1.5 * dt;
       r.psi = clamp(r.psi, -0.8, 0.8);
       var slide = Math.max(0, r.v * r.v * Math.abs(k) - 34) * 0.07;
+      r.slide = slide;
       r.d += (r.v * Math.sin(r.psi) + r.vd - (k > 0 ? slide : -slide)) * dt;
       r.vd *= Math.exp(-4 * dt);
       r.t += ds;
@@ -235,13 +246,14 @@
         r.vd = 0;
         if (hit > 5 && r.hitWait <= 0) {
           r.v *= 0.78; r.hitWait = 0.5;
-          if (r.p) { api.buzz(r.p, [90]); api.sound('wall', 1); }
+          if (r.p) { api.buzz(r.p, [90]); api.sound('crash', 1, panOf(r)); }
         }
         r.v -= r.v * 0.5 * dt;
       }
     }
 
     function contact(a, b) {
+      if (a.down || b.down) return;
       var dt = a.t - b.t, dd = a.d - b.d, wide = SPEC[a.kind].wide + SPEC[b.kind].wide;
       if (Math.abs(dt) > 3.8 || Math.abs(dd) > wide) return;
       if (Math.abs(dd) > wide * 0.5) {
@@ -253,7 +265,7 @@
         var side = back.d >= front.d ? 1 : -1;
         back.vd += side * 2.5;
       }
-      [a, b].forEach(function (r) { if (r.hitWait <= 0) { r.hitWait = 0.4; if (r.p) api.buzz(r.p, [40]); } });
+      [a, b].forEach(function (r) { if (r.hitWait <= 0) { r.hitWait = 0.4; if (r.p) { api.buzz(r.p, [40]); api.sound('wall', 1, panOf(r)); } } });
     }
 
     function finishCheck(r) {
@@ -261,8 +273,9 @@
       r.place = ++places; r.time = raceTime;
       if (!firstAny) firstAny = raceTime;
       if (r.p) {
-        api.buzz(r.p, [80, 60, 160]); api.sound('goal');
+        api.buzz(r.p, [80, 60, 160]); api.sound('cheer');
         api.note(r.p, 'You finished ' + PLACE[r.place - 1]);
+        api.say(r.p.name + ' finishes ' + ['first', 'second', 'third', 'fourth'][r.place - 1], true);
         if (!firstDone) firstDone = raceTime;
       }
     }
@@ -283,8 +296,9 @@
       }
       if (phase === 'count') {
         var before = Math.ceil(clock); clock -= dt;
-        if (Math.ceil(clock) < before && clock > 0) api.sound('move');
-        if (clock <= 0) { phase = 'race'; api.sound('go'); humans().forEach(function (r) { api.buzz(r.p, [120]); }); }
+        if (Math.ceil(clock) < before && clock > 0) api.sound('beep');
+        rev(dt);
+        if (clock <= 0) { phase = 'race'; api.sound('go'); api.sound('cheer'); humans().forEach(function (r) { api.buzz(r.p, [120]); }); }
         return;
       }
       raceTime += dt;
@@ -292,16 +306,18 @@
       for (i = 0; i < racers.length; i++) drive(racers[i], dt);
       for (i = 0; i < racers.length; i++) for (j = i + 1; j < racers.length; j++) contact(racers[i], racers[j]);
       order().forEach(finishCheck);
+      rev(dt);
       var hs = humans();
       var all = hs.length ? hs.every(function (r) { return r.place; }) : places === FIELD;
       if (all || (firstDone && raceTime - firstDone > 30) || (firstAny && raceTime - firstAny > 150)) {
         over = true;
-        var rank = order();
+        racers.forEach(function (r) { if (r.place) r.pts += BONUS[r.place - 1]; });
+        var rank = order().sort(function (a, b) { return b.pts - a.pts || (a.place || 9) - (b.place || 9); });
         api.finish({
-          title: (rank[0].p ? rank[0].p.name : 'Computer') + ' wins',
+          title: who(rank[0]) + ' wins',
           detail: rank.map(function (r, n) {
-            return (n + 1) + '. ' + (r.p ? r.p.name : 'Computer') + (r.place ? ' ' + stopwatch(r.time) : '');
-          }).join('   ')
+            return (n + 1) + '. ' + who(r) + ' ' + r.pts + ' points' + (r.place ? ' (' + PLACE[r.place - 1] + ', ' + stopwatch(r.time) + ')' : '');
+          }).join('\n')
         });
       }
     }
@@ -310,18 +326,68 @@
       var r = racers.filter(function (q) { return q.p === p; })[0];
       if (!r) return;
       if (phase === 'pick') { if (btn === api.BTN.A && !r.ready) { r.ready = true; api.sound('join'); api.buzz(p, [30]); } return; }
-      if (phase !== 'race' || btn !== api.BTN.X || r.shoveWait > 0 || r.place) return;
-      r.shoveWait = 2.2;
+      if (phase === 'race' && btn === api.BTN.X && r.shoveWait <= 0 && !r.place && !r.down) attack(r, false);
+    }
+    function who(r) { return r.p ? r.p.name : 'Computer'; }
+    function pop(r, text) { r.pop = text; r.popFor = 1.4; }
+    function inReach(r) {
       var target = null, best = 1e9;
       racers.forEach(function (q) {
         var dt = Math.abs(q.t - r.t), dd = Math.abs(q.d - r.d);
-        if (q !== r && dt < 7 && dd < 5 && dt + dd < best) { best = dt + dd; target = q; }
+        if (q === r || q.down || q.safe || q.place) return;
+        if (dt < 7 && dd < 5 && dt + dd < best) { best = dt + dd; target = q; }
       });
-      if (!target) { api.sound('move'); return; }
-      target.vd += (target.d >= r.d ? 1 : -1) * SPEC[r.kind].shove;
-      target.v *= 0.84; target.wob = 0.6;
-      api.sound('hit', 1); api.buzz(p, [40]);
-      if (target.p) api.buzz(target.p, [140]);
+      return target;
+    }
+    function attack(r, cpu) {
+      var q = inReach(r);
+      if (cpu && !q) return;
+      r.shoveWait = cpu ? 3.5 : 1;
+      if (!q) { r.swing = 1; api.sound('move'); return; }
+      var side = q.d >= r.d ? 1 : -1;
+      r.swing = side;
+      q.vd += side * SPEC[r.kind].shove;
+      q.v *= 0.86; q.wob = 0.5; q.hp--;
+      r.pts += HIT;
+      if (q.hp > 0) {
+        pop(r, 'Hit +' + HIT); pop(q, 'Ouch');
+        api.sound('shove', 1, panOf(r));
+      } else {
+        r.pts += KNOCKOUT;
+        q.down = DOWN; q.fall = side;
+        pop(r, 'Knockout +' + (HIT + KNOCKOUT)); pop(q, 'Knocked down');
+        api.sound('ko', 1, panOf(q));
+        if (r.p || q.p) api.say(who(r) + ' knocks down ' + who(q));
+      }
+      if (r.p) api.buzz(r.p, [40]);
+      if (q.p) api.buzz(q.p, q.hp > 0 ? [140] : [300]);
+    }
+
+    // Engine sound for every racer. Rivals are heard only when close to a player.
+    var revIn = 0;
+    function panOf(r) {
+      var v = views().filter(function (q) { return q.r === r; })[0];
+      return v ? (v.x + v.w / 2 - 0.5) * 1.4 : 0;
+    }
+    function rev(dt) {
+      revIn -= dt;
+      if (revIn > 0) return;
+      revIn = 0.04;
+      var hs = humans(), fast = 0, rough = 0, slide = 0;
+      var list = racers.map(function (r) {
+        var vol = 1, pan = panOf(r);
+        if (r.p) {
+          fast = Math.max(fast, r.v); slide = Math.max(slide, r.slide || 0);
+          if (r.rough && r.v > 5) rough = Math.max(rough, r.v);
+          if (!r.lastLap && r.t > (LAPS - 1) * L) { r.lastLap = true; api.say('Final lap, ' + r.p.name); }
+        } else {
+          var near = hs.reduce(function (m, h) { return Math.min(m, Math.abs(h.t - r.t)); }, 1e9);
+          vol = Math.max(0, 1 - near / 45) * 0.6;
+        }
+        var gas = phase === 'count' ? (r.p ? api.held(r.p, api.BTN.A) : false) : r.gas;
+        return { id: r.i, kind: r.kind, v: phase === 'count' && gas ? 7 : r.v, gas: gas, vol: vol, pan: pan };
+      });
+      api.engines(list, { wind: fast / 66 * 0.05, gravel: rough ? 0.1 + rough / 66 * 0.25 : 0, skid: slide > 0.8 ? Math.min(0.2, slide * 0.06) : 0 });
     }
 
     function pose(r, dt) {
@@ -335,7 +401,11 @@
         m.position.set(r.x, r.y, r.z);
         m.rotation.order = 'YXZ';
         m.rotation.y = -r.a;
-        m.rotation.z = k === 'bike' ? -r.lean * 0.55 * Math.min(1, r.v / 25) : r.lean * 0.05;
+        var f = r.down > 0 ? Math.min(1, (DOWN - r.down) * 4, r.down * 2.5) : 0;
+        if (f && k === 'car') m.rotation.y += f * Math.sin((DOWN - r.down) * 4) * 2;
+        m.visible = !(r.safe > 0 && Math.floor(r.safe * 8) % 2);
+        m.rotation.z = k === 'bike' ? -r.lean * 0.55 * Math.min(1, r.v / 25) - r.swing * 0.5 - f * 1.35 * (r.fall || 1) : r.lean * 0.05;
+        if (k === 'bike' && f) m.position.y += 0.25 * f;
       });
     }
     function aim(r, dt, aspect) {
@@ -399,6 +469,11 @@
         }
         var at = rank.indexOf(r), lap = clamp(Math.floor(r.t / L) + 1, 1, LAPS);
         tag(c, PLACE[at], x + pad, y + pad + big * 0.3, '700 ' + big + 'px ' + HEAD);
+        tag(c, r.pts + ' points', x + pad, y + pad + big * 0.3 + (small ? 44 : 62), '600 ' + (small ? 30 : 40) + 'px ' + HEAD, '#ffc53d');
+        for (var hp = 0; hp < HEALTH; hp++) {
+          c.fillStyle = hp < r.hp ? '#e0444f' : 'rgba(8,24,36,.6)';
+          c.fillRect(x + w / 2 - 54 + hp * 37, y + pad - 2, 33, 12);
+        }
         tag(c, r.place ? stopwatch(r.time) : 'Lap ' + lap + ' of ' + LAPS, x + w - pad, y + pad + 14, '600 ' + (small ? 30 : 40) + 'px ' + HEAD, '#fff', 'right');
         tag(c, Math.round(r.v * 3) + ' km/h', x + w - pad, y + h - pad - 6, '700 ' + (small ? 38 : 52) + 'px ' + HEAD, '#fff', 'right');
         if (r.p) {
@@ -408,6 +483,8 @@
         }
         var msg = phase === 'count' ? String(Math.max(1, Math.ceil(clock))) : raceTime < 1 ? 'Go' : r.place ? 'Finished ' + PLACE[r.place - 1] : '';
         if (msg) tag(c, msg, cx, y + h * 0.36, '700 ' + (small ? 84 : 130) + 'px ' + HEAD, '#ffc53d', 'center');
+        else if (r.popFor > 0) tag(c, r.pop, cx, y + h * 0.36, '700 ' + (small ? 52 : 78) + 'px ' + HEAD, /\+/.test(r.pop) ? '#ffc53d' : '#ffffff', 'center');
+        else if (phase === 'race' && r.p && !r.down && r.shoveWait <= 0 && inReach(r)) tag(c, 'Press X to hit', cx, y + h * 0.36, '600 ' + (small ? 36 : 48) + 'px ' + HEAD, '#fff', 'center');
         else if (phase === 'race' && r.p && r.v < 2 && raceTime > 1.5) tag(c, 'Hold A to go', cx, y + h * 0.36, '600 ' + (small ? 40 : 54) + 'px ' + HEAD, '#fff', 'center');
       });
       c.fillStyle = '#0b2030';
@@ -431,7 +508,7 @@
       });
       if (!rank) return;
       rank.forEach(function (r, n) {
-        tag(c, (n + 1) + '. ' + (r.p ? r.p.name : 'Computer'), 720 + (n % 2) * 280, 660 + Math.floor(n / 2) * 36, '600 28px ' + HEAD);
+        tag(c, (n + 1) + '. ' + who(r), 720 + (n % 2) * 280, 660 + Math.floor(n / 2) * 36, '600 28px ' + HEAD);
       });
     }
 
@@ -443,8 +520,8 @@
   }
 
   Games.register({
-    id: 'ghat-rally', name: 'Ghat Rally', blurb: '3D bikes and cars. 1 to 4 players.', is3d: true,
-    layout: { title: 'Ghat Rally', buttons: ['Gas', 'Brake', 'Shove', 'Pause'], stick: 'Steer', mode: 'stick', tilt: true },
+    id: 'ghat-rally', name: 'Ghat Rally', music: 'rally', crowd: 0.35, blurb: '3D race. Hit rivals for points.', is3d: true,
+    layout: { title: 'Ghat Rally', buttons: ['Gas', 'Brake', 'Hit', 'Pause'], stick: 'Steer', mode: 'stick', tilt: true },
     art: function (c, w, h) {
       c.fillStyle = '#a9cfe0'; c.fillRect(0, 0, w, h);
       c.fillStyle = '#7fa7b5'; c.beginPath(); c.moveTo(0, h * 0.5); c.lineTo(w * 0.28, h * 0.16); c.lineTo(w * 0.52, h * 0.46); c.lineTo(w * 0.76, h * 0.22); c.lineTo(w, h * 0.5); c.fill();

@@ -42,12 +42,18 @@ The default pairing server is the free public one, which has no uptime guarantee
 | Left thumb | Position in your half | Steer (or Tilt) | Pull back and release | Browse |
 | A | Smash (just before contact) | Gas | | Select |
 | B | | Brake | Striker right | Back |
-| X | Cheer | Shove | Striker left | |
+| X | Cheer | Hit a rival | Striker left | |
 | Y | Pause | Pause | Pause | |
+
+Ghat Rally: a hit scores 50 and the third hit knocks the rival down for 150 more. Finishing places add 400, 250, 150 and 75. Most points wins. The screen splits by itself: 2 players side by side, 3 or 4 in quarters.
 
 Carrom uses points rules: black 10, white 20, queen 50. The queen must be covered in the same shot or the next. Pocketing the striker costs 10.
 
 TV remote: arrows and OK in menus, Back or OK to pause. To try the controller on a computer, use the arrow keys and J, K, U, I for A, B, X, Y.
+
+## Sound
+
+Music, engines, crowd and effects are synthesised in `js/tv/sound.js`, with no audio files. Browsers block sound until someone presses a key or clicks on the TV itself, so the TV shows a reminder until then. Sound, music and the announcer have switches on the home screen, and the pause menu has Mute. The announcer uses only voices installed on the device; many TVs have none.
 
 ## Add a game
 
