@@ -130,6 +130,7 @@
   }
   function layout(m) {
     var names = Array.isArray(m.buttons) ? m.buttons : [];
+    $('invite').hidden = m.invite !== true;
     tiltWanted = m.tilt === true;
     if (!tiltWanted && tiltOn) setTilt(false);
     setMode(m.mode === 'pad' || m.mode === 'drag' ? m.mode : 'stick');
@@ -362,6 +363,18 @@
     joined = false;
     setTimeout(function () { stop(''); }, 150);
   }
+  // Send the join link to someone whose camera can't scan the code.
+  $('invite').onclick = function () {
+    var here = location.href.split('#')[0].split('?')[0];
+    var url = here.slice(0, here.lastIndexOf('/') + 1) + 'j/#' + SA.cleanCode($('code').value);
+    function copy() {
+      if (!navigator.clipboard) return toast('Code: ' + SA.cleanCode($('code').value));
+      navigator.clipboard.writeText(url).then(function () { toast('Link copied'); },
+        function () { toast('Code: ' + SA.cleanCode($('code').value)); });
+    }
+    if (!navigator.share) return copy();
+    navigator.share({ title: 'Sofa Arcade', text: 'Join my game', url: url }).catch(function (e) { if (!e || e.name !== 'AbortError') copy(); });
+  };
   $('leave').onclick = leave;
   $('cover-leave').onclick = leave;
 

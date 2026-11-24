@@ -5,7 +5,7 @@
   var canvas = $('canvas'), c = canvas.getContext('2d', { alpha: false, desynchronized: true }) || canvas.getContext('2d');
   var hud = $('hud').getContext('2d'), gl = null, scale3d = 1, fps = 60;
   var game = null, def = null, paused = false, waitingFor = null, sheetBack = null;
-  var HOME_LAYOUT = { title: 'Choose a game', buttons: ['Select', 'Back', '', ''], stick: 'Browse', mode: 'stick' };
+  var HOME_LAYOUT = { title: 'Choose a game', buttons: ['Select', 'Back', '', ''], stick: 'Browse', mode: 'stick', invite: true };
 
   function el(tag, cls, text) {
     var n = document.createElement(tag);
@@ -63,13 +63,13 @@
 
   function controllerUrl() {
     var base = location.href.split('#')[0].split('?')[0];
-    return base.slice(0, base.lastIndexOf('/') + 1) + 'controller.html';
+    return base.slice(0, base.lastIndexOf('/') + 1) + 'j/';
   }
   var shownCode = null;
   function drawQr(code) {
     if (!code || code === shownCode) return;
     shownCode = code;
-    var qr = qrcode(0, 'M');
+    var qr = qrcode(0, 'L');
     qr.addData(controllerUrl() + '#' + code);
     qr.make();
     var n = qr.getModuleCount(), q = 4, d = '';
@@ -77,7 +77,7 @@
       if (qr.isDark(r, k)) d += 'M' + (k + q) + ' ' + (r + q) + 'h1v1h-1z';
     }
     $('qr').innerHTML = '<svg viewBox="0 0 ' + (n + q * 2) + ' ' + (n + q * 2) + '" shape-rendering="crispEdges"><path fill="#000" d="' + d + '"/></svg>';
-    $('join-url').textContent = controllerUrl().replace(/^https?:\/\//, '');
+    $('join-url').textContent = controllerUrl().replace(/^https?:\/\//, '').replace(/\/$/, '');
   }
 
   function seatNote(p) {

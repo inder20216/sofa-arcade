@@ -29,6 +29,8 @@ Open `http://<this computer's network address>:8080` on the TV or laptop. Phones
 3. The pairing server introduces the two, and they connect with WebRTC. On the same Wi-Fi the connection is normally direct.
 4. Controller input uses a second channel that drops late packets instead of queueing them.
 
+If a phone can't scan the code, open `https://<user>.github.io/<repository>/j` on it and type the code, or tap **Invite** on a connected phone to send the link.
+
 Anyone with the code can join while a seat is free. Select a player on the TV to remove them.
 
 The default pairing server is the free public one, which has no uptime guarantee. Set your own in `js/config.js` before a public launch. Some networks (often guest, hotel and office Wi-Fi) block devices from reaching each other. The public relay may help there, with more delay.
