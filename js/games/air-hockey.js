@@ -5,10 +5,10 @@
   var GOAL = 112;            // half the goal height
   var R = 42, PR = 25;       // mallet and puck radius
   var WIN = 7;
-  var SPEED = 820, CPU_SPEED = 470, PUCK_MAX = 1650;
-  var DASH_TIME = 0.16, DASH_WAIT = 0.9, SMASH_TIME = 0.3, SMASH_WAIT = 0.8;
+  var MALLET_MAX = 2600, HIT_MAX = 950, CPU_SPEED = 470, PUCK_MAX = 1650;
+  var SMASH_TIME = 0.3, SMASH_WAIT = 0.8;
   var TEAM = ['Left', 'Right'];
-  var TIMERS = ['dash', 'dashWait', 'smash', 'smashWait', 'cheer', 'hitWait'];
+  var TIMERS = ['smash', 'smashWait', 'cheer', 'hitWait'];
 
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
   function dist(dx, dy) { return Math.sqrt(dx * dx + dy * dy); }
@@ -21,7 +21,7 @@
       var ps = api.players();
       var per = Math.max(1, Math.ceil(ps.length / 2));
       for (var i = 0; i < per * 2; i++) {
-        var m = { team: i % 2, p: ps[i] || null, dx: 0, dy: 0 };
+        var m = { team: i % 2, p: ps[i] || null };
         TIMERS.forEach(function (k) { m[k] = 0; });
         mallets.push(m);
       }
@@ -33,7 +33,7 @@
       var list = mates(m), i = list.indexOf(m);
       m.hx = m.team === 0 ? T.l + 170 + i * 150 : T.r - 170 - i * 150;
       m.hy = list.length === 1 ? CY : CY + (i === 0 ? -95 : 95);
-      m.x = m.hx; m.y = m.hy; m.vx = m.vy = 0;
+      m.x = m.tx = m.hx; m.y = m.ty = m.hy; m.vx = m.vy = 0;
     }
     function serve(to, delay) {
       wait = delay; still = 0; trail = [];
@@ -72,19 +72,33 @@
 
     function moveMallet(m, dt) {
       var human = m.p && m.p.status !== 'off';
-      var s = human ? m.p : cpu(m);
-      var max = human ? SPEED : CPU_SPEED;
-      var tx = s.x * max, ty = s.y * max;
-      if (m.dash > 0) { tx = m.dx * SPEED * 1.9; ty = m.dy * SPEED * 1.9; }
-      var f = 1 - Math.exp(-dt * 30);
-      m.vx += (tx - m.vx) * f; m.vy += (ty - m.vy) * f;
-      m.x += m.vx * dt; m.y += m.vy * dt;
+      if (human) {
+        // The phone pad is a map of this player's half. Lifting the thumb leaves the mallet where it is.
+        if (api.touching(m.p)) {
+          m.tx = (lo(m) + hi(m)) / 2 + m.p.x * (hi(m) - lo(m)) / 2;
+          m.ty = CY + m.p.y * (T.b - T.t - 2 * R) / 2;
+        }
+        var dx = m.tx - m.x, dy = m.ty - m.y, d = dist(dx, dy);
+        // 12 ms of smoothing hides the steps between phone updates.
+        var step = Math.min(d * (1 - Math.exp(-dt / 0.012)), MALLET_MAX * dt);
+        var ox = m.x, oy = m.y;
+        if (d > 0.01) { m.x += dx / d * step; m.y += dy / d * step; }
+        fence(m);
+        var f = 1 - Math.exp(-dt * 60);
+        m.vx += ((m.x - ox) / dt - m.vx) * f; m.vy += ((m.y - oy) / dt - m.vy) * f;
+      } else {
+        var s = cpu(m), g = 1 - Math.exp(-dt * 30);
+        m.vx += (s.x * CPU_SPEED - m.vx) * g; m.vy += (s.y * CPU_SPEED - m.vy) * g;
+        m.x += m.vx * dt; m.y += m.vy * dt;
+        m.tx = m.x; m.ty = m.y;
+      }
       for (var i = 0; i < TIMERS.length; i++) m[TIMERS[i]] = Math.max(0, m[TIMERS[i]] - dt);
       fence(m);
     }
+    function lo(m) { return m.team === 0 ? T.l + R : CX + R; }
+    function hi(m) { return m.team === 0 ? CX - R : T.r - R; }
     function fence(m) {
-      var lo = m.team === 0 ? T.l + R : CX + R, hi = m.team === 0 ? CX - R : T.r - R;
-      m.x = clamp(m.x, lo, hi); m.y = clamp(m.y, T.t + R, T.b - R);
+      m.x = clamp(m.x, lo(m), hi(m)); m.y = clamp(m.y, T.t + R, T.b - R);
     }
     function keepOff(m, gap) {          // move a mallet off the puck
       var dx = m.x - puck.x, dy = m.y - puck.y, d = dist(dx, dy) || 1, min = R + PR + gap;
@@ -97,7 +111,8 @@
       if (d < 0.01) { dx = m.team === 0 ? 1 : -1; dy = 0; d = 1; }
       var nx = dx / d, ny = dy / d;
       puck.x = m.x + nx * min; puck.y = m.y + ny * min;
-      var rel = (puck.vx - m.vx) * nx + (puck.vy - m.vy) * ny;
+      var sp = dist(m.vx, m.vy), cap = sp > HIT_MAX ? HIT_MAX / sp : 1;
+      var rel = (puck.vx - m.vx * cap) * nx + (puck.vy - m.vy * cap) * ny;
       if (rel >= 0) return;
       puck.vx -= 1.85 * rel * nx; puck.vy -= 1.85 * rel * ny;
       if (m.smash > 0) {
@@ -197,10 +212,6 @@
       var m = mallets.filter(function (o) { return o.p === p; })[0];
       if (!m) return;
       if (btn === api.BTN.A && m.smashWait <= 0) { m.smash = SMASH_TIME; m.smashWait = SMASH_WAIT; }
-      if (btn === api.BTN.B && m.dashWait <= 0) {
-        var l = dist(p.x, p.y);
-        if (l > 0.2) { m.dx = p.x / l; m.dy = p.y / l; m.dash = DASH_TIME; m.dashWait = DASH_WAIT; }
-      }
       if (btn === api.BTN.X && m.cheer <= 0) { m.cheer = 0.8; api.sound('cheer'); }
     }
 
@@ -211,7 +222,11 @@
     }
     function line(c, x) { c.beginPath(); c.moveTo(x, T.t); c.lineTo(x, T.b); c.stroke(); }
 
-    function drawRink(c) {
+    var rink = document.createElement('canvas');
+    rink.width = api.W; rink.height = api.H;
+    paintRink(rink.getContext('2d', { alpha: false }) || rink.getContext('2d'));
+
+    function paintRink(c) {
       c.fillStyle = '#123047'; c.fillRect(0, 0, api.W, api.H);
       c.fillStyle = '#0b2030'; c.fillRect(T.l - 22, T.t - 22, T.r - T.l + 44, T.b - T.t + 44);
       c.fillStyle = '#eaf3f6'; c.fillRect(T.l, T.t, T.r - T.l, T.b - T.t);
@@ -283,7 +298,7 @@
     }
 
     function draw(c) {
-      drawRink(c);
+      c.drawImage(rink, 0, 0);
       drawPieces(c);
       drawScore(c);
       var n = Math.ceil(wait);
@@ -306,7 +321,7 @@
     id: 'air-hockey',
     name: 'Air Hockey',
     blurb: '1 to 4 players. First to 7.',
-    layout: { title: 'Air Hockey', buttons: ['Smash', 'Dash', 'Cheer', 'Pause'], stick: 'Move' },
+    layout: { title: 'Air Hockey', buttons: ['Smash', '', 'Cheer', 'Pause'], stick: 'Your half', mode: 'pad' },
     art: function (c, w, h) {
       c.fillStyle = '#eaf3f6'; c.fillRect(0, 0, w, h);
       c.strokeStyle = '#d94452'; c.lineWidth = w * 0.012;

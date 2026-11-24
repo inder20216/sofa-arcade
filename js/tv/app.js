@@ -2,9 +2,10 @@
 (function () {
   var $ = function (id) { return document.getElementById(id); };
   var W = 1280, H = 720, STEP = 1 / 120;
-  var canvas = $('canvas'), c = canvas.getContext('2d', { alpha: false }) || canvas.getContext('2d');
+  var canvas = $('canvas'), c = canvas.getContext('2d', { alpha: false, desynchronized: true }) || canvas.getContext('2d');
+  var hud = $('hud').getContext('2d'), gl = null, scale3d = 1, fps = 60;
   var game = null, def = null, paused = false, waitingFor = null, sheetBack = null;
-  var HOME_LAYOUT = { title: 'Choose a game', buttons: ['Select', 'Back', '', ''], stick: 'Browse' };
+  var HOME_LAYOUT = { title: 'Choose a game', buttons: ['Select', 'Back', '', ''], stick: 'Browse', mode: 'stick' };
 
   function el(tag, cls, text) {
     var n = document.createElement(tag);
@@ -85,7 +86,7 @@
       return 'Disconnected, ' + left + ' s';
     }
     if (p.status === 'weak') return 'Weak signal';
-    return p.median === null ? 'Connected' : 'Connected, ' + Math.max(1, Math.round(p.median)) + ' ms';
+    return p.median === null ? 'Connected' : (p.path === 'relay' ? 'Slow relay, ' : 'Direct, ') + Math.max(1, Math.round(p.median)) + ' ms';
   }
 
   // Seats are updated in place so the remote's focus is never lost.
@@ -125,8 +126,8 @@
       var b = el('button', 'game'), art = el('canvas');
       b.type = 'button';
       b.setAttribute('data-nav', '');
-      art.width = 480; art.height = 243;
-      g.art(art.getContext('2d'), 480, 243);
+      art.width = 480; art.height = 380;
+      g.art(art.getContext('2d'), 480, 380);
       b.appendChild(art);
       b.appendChild(el('span', 'name', g.name));
       b.appendChild(el('span', 'blurb', g.blurb));
@@ -142,14 +143,20 @@
       openSheet('Connect a phone first', 'Scan the QR code with a phone camera to join.', [['OK', closeSheet]], closeSheet);
       return;
     }
+    if (g.is3d && !ready3d(g)) return;
+    endGame();
     def = g; finished = false; paused = false; waitingFor = null;
     closeSheet();
+    canvas.hidden = !!g.is3d; $('gl').hidden = $('hud').hidden = !g.is3d;
     $('home').hidden = true; $('stage').hidden = false;
     room.setLayout(g.layout);
     game = g.create({
       W: W, H: H, BTN: SA.BTN,
       players: function () { return room.players(); },
       held: function (p, b) { return room.held(p, b); },
+      touching: function (p) { return room.touching(p); },
+      note: function (p, text) { room.send(p, { t: 'note', text: text }); },
+      fps: function () { return fps; },
       buzz: function (p, pattern) { room.buzz(p, pattern); },
       sound: Sound.play,
       finish: function (r) {
@@ -159,8 +166,48 @@
     });
     acc = 0;
   }
+  function endGame() {
+    if (game && game.destroy) game.destroy();
+    game = null;
+  }
+  // The 3D engine is large, so it loads only when a 3D game is first opened.
+  var loading3d = false;
+  function ready3d(g) {
+    if (gl) return true;
+    if (loading3d) return false;
+    function refuse() {
+      loading3d = false;
+      openSheet('3D isn\u2019t available here', 'This browser can\u2019t draw 3D games. Try Chrome on a laptop connected to the TV.', [['OK', closeSheet]], closeSheet);
+    }
+    function begin() {
+      try { gl = new THREE.WebGLRenderer({ canvas: $('gl'), antialias: false, powerPreference: 'high-performance' }); }
+      catch (e) { return refuse(); }
+      gl.autoClear = false;
+      size3d();
+      loading3d = false;
+      closeSheet();
+      startGame(g);
+    }
+    loading3d = true;
+    openSheet('Loading', 'Getting the 3D engine ready.', [['Cancel', function () { loading3d = false; closeSheet(); }]], null);
+    if (window.THREE) { begin(); return false; }
+    var s = document.createElement('script');
+    s.src = 'vendor/three.min.js?v=2';
+    s.onload = function () { if (loading3d) begin(); };
+    s.onerror = refuse;
+    document.body.appendChild(s);
+    return false;
+  }
+  function size3d() { gl.setSize(Math.round(W * scale3d), Math.round(H * scale3d), false); }
+  // Slow TVs get a lower 3D resolution so the controls stay responsive.
+  var slowFor = 0;
+  function adapt3d(dt) {
+    slowFor = fps < 42 ? slowFor + dt : 0;
+    if (slowFor > 2 && scale3d > 0.5) { scale3d = scale3d > 0.8 ? 0.7 : 0.5; slowFor = -2; size3d(); }
+  }
   function goHome() {
-    game = null; def = null; paused = false; waitingFor = null; finished = false;
+    endGame();
+    def = null; paused = false; waitingFor = null; finished = false;
     closeSheet();
     $('stage').hidden = true; $('home').hidden = false;
     room.setLayout(HOME_LAYOUT);
@@ -192,7 +239,7 @@
     sheetAt = performance.now();
     $('overlay').hidden = false;
     $('sheet-actions').firstChild.focus();
-    room.setLayout({ title: title, buttons: ['Select', 'Back', '', ''], stick: 'Browse' });
+    room.setLayout({ title: title, buttons: ['Select', 'Back', '', ''], stick: 'Browse', mode: 'stick' });
   }
   var sheetAt = 0;
   function closeSheet() {
@@ -250,13 +297,14 @@
   function phoneNav(now) {
     room.players().forEach(function (p) {
       var d = '';
+      if (!room.touching(p)) { p.nav = ''; return; }
       if (Math.abs(p.x) > 0.6 && Math.abs(p.x) >= Math.abs(p.y)) d = p.x > 0 ? 'r' : 'l';
       else if (Math.abs(p.y) > 0.6) d = p.y > 0 ? 'd' : 'u';
       if (!d) { p.nav = ''; return; }
       if (d === p.nav && now < p.navAt) return;
       p.navAt = now + (d === p.nav ? 180 : 420);
       p.nav = d;
-      if (inMenu()) move(d === 'r' ? 1 : d === 'l' ? -1 : 0, d === 'd' ? 1 : d === 'u' ? -1 : 0);
+      if (inMenu() && now - sheetAt > 400) move(d === 'r' ? 1 : d === 'l' ? -1 : 0, d === 'd' ? 1 : d === 'u' ? -1 : 0);
     });
   }
   document.addEventListener('keydown', function (e) {
@@ -264,7 +312,7 @@
     var k = e.keyCode;
     if (e.ctrlKey || e.altKey || e.metaKey) return;
     if (k === 27 || k === 8 || k === 461 || k === 10009 || e.key === 'GoBack') { e.preventDefault(); back(); return; }
-    if (!inMenu()) { if (k === 13 || k === 80) { e.preventDefault(); openPause(); } return; }
+    if (!inMenu()) { if (k === 13 || k === 80 || k === 415 || k === 19) { e.preventDefault(); openPause(); } return; }
     if (k >= 37 && k <= 40) {
       e.preventDefault();
       move(k === 39 ? 1 : k === 37 ? -1 : 0, k === 40 ? 1 : k === 38 ? -1 : 0);
@@ -278,14 +326,19 @@
     requestAnimationFrame(frame);
     var dt = Math.max(0, Math.min(0.1, (now - last) / 1000));
     last = now;
+    if (dt > 0) fps += (1 / dt - fps) * 0.05;
     phoneNav(now);
     if (game) {
       if (!paused && !finished) {
         acc += dt;
         while (acc >= STEP && game) { game.update(STEP); acc -= STEP; }
       }
-      c.setTransform(canvas.width / W, 0, 0, canvas.height / H, 0, 0);
-      game.draw(c);
+      if (def.is3d) {
+        adapt3d(dt);
+        game.render(gl, W * scale3d, H * scale3d, dt);
+        hud.clearRect(0, 0, W, H);
+        game.draw(hud);
+      } else game.draw(c);
     }
     if (now - lastSecond > 500) {
       lastSecond = now;

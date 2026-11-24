@@ -28,6 +28,8 @@
         tone(392, 392, 160, 0.12, 'square');
         setTimeout(function () { tone(587, 587, 320, 0.12, 'square'); }, 150);
       }
+      else if (name === 'coin') tone(1150, 800, 45, 0.16 * v, 'triangle');
+      else if (name === 'pocket') tone(330, 90, 220, 0.2);
       else if (name === 'cheer') tone(440, 990, 180, 0.15);
       else if (name === 'join') tone(440, 660, 140, 0.16);
       else if (name === 'move') tone(700, 650, 35, 0.08);

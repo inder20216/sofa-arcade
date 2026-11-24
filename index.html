@@ -7,7 +7,7 @@
 <meta name="description" content="Play on the TV. Your phone is the controller.">
 <meta name="theme-color" content="#123047">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="css/tv.css?v=1">
+<link rel="stylesheet" href="css/tv.css?v=2">
 </head>
 <body>
 <main id="home" class="home">
@@ -30,6 +30,8 @@
 
 <div id="stage" class="stage" hidden>
   <canvas id="canvas" width="1280" height="720"></canvas>
+  <canvas id="gl" hidden></canvas>
+  <canvas id="hud" width="1280" height="720" hidden></canvas>
 </div>
 
 <div id="overlay" class="overlay" hidden>
@@ -50,15 +52,18 @@
 </div>
 
 <noscript>Sofa Arcade needs JavaScript. Turn it on and reload.</noscript>
-<script src="vendor/peerjs.min.js?v=1"></script>
-<script src="vendor/qrcode.js?v=1"></script>
-<script src="js/config.js?v=1"></script>
-<script src="js/protocol.js?v=1"></script>
-<script src="js/tv/sound.js?v=1"></script>
-<script src="js/tv/room.js?v=1"></script>
-<script src="js/games/registry.js?v=1"></script>
-<script src="js/games/air-hockey.js?v=1"></script>
-<script src="js/games/controller-check.js?v=1"></script>
-<script src="js/tv/app.js?v=1"></script>
+<script src="vendor/peerjs.min.js?v=2"></script>
+<script src="vendor/qrcode.js?v=2"></script>
+<script src="js/config.js?v=2"></script>
+<script src="js/protocol.js?v=2"></script>
+<script src="js/tv/sound.js?v=2"></script>
+<script src="js/tv/room.js?v=2"></script>
+<script src="js/games/registry.js?v=2"></script>
+<script src="js/games/air-hockey.js?v=2"></script>
+<script src="js/games/kit3d.js?v=2"></script>
+<script src="js/games/ghat-rally.js?v=2"></script>
+<script src="js/games/carrom.js?v=2"></script>
+<script src="js/games/controller-check.js?v=2"></script>
+<script src="js/tv/app.js?v=2"></script>
 </body>
 </html>

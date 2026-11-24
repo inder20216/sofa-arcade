@@ -1,7 +1,8 @@
 /* Phone side: joining, the virtual controller, and reconnecting. */
 (function () {
   var $ = function (id) { return document.getElementById(id); };
-  var HEARTBEAT = 100;      // ms between packets when nothing changes
+  var LIVE = 16;            // ms between packets while touching; also keeps the phone's Wi-Fi awake
+  var HEARTBEAT = 50;      // ms between packets when nothing changes
   var SILENT = 4000;        // ms without hearing from the TV before reconnecting
   var CONNECT_LIMIT = 12000;
 
@@ -20,6 +21,7 @@
     return s;
   }
   // Private to this phone and the TV. Lets the phone take its own seat back.
+  var held = {}, tiltOn = false, tiltWanted = false, touch = 'ontouchstart' in window;
   var myId = store('sa-id');
   if (!myId || myId.length < 16) { myId = makeId(); store('sa-id', myId); }
 
@@ -128,6 +130,10 @@
   }
   function layout(m) {
     var names = Array.isArray(m.buttons) ? m.buttons : [];
+    tiltWanted = m.tilt === true;
+    if (!tiltWanted && tiltOn) setTilt(false);
+    setMode(m.mode === 'pad' || m.mode === 'drag' ? m.mode : 'stick');
+    $('tilt').hidden = !tiltWanted || !window.DeviceOrientationEvent || !touch;
     $('ptitle').textContent = String(m.title || '').slice(0, 40);
     $('stick-label').textContent = String(m.stick || '').slice(0, 12);
     eachButton(function (b, i) {
@@ -174,23 +180,43 @@
   setInterval(function () {
     if (!joined) return;
     var t = performance.now();
-    if (dirty || t - lastSent >= HEARTBEAT) send(true);
+    if (dirty || t - lastSent >= ((state.mask ? LIVE : HEARTBEAT) - 4)) send(true);
     if (conn && conn.open && t - lastHeard > SILENT && !document.hidden) again('');
-  }, 16);
+  }, 8);
 
   /* ---------- Joystick ---------- */
-  var stick = $('stick'), knob = $('knob'), base = $('base'), stickId = null, ox = 0, oy = 0;
+  // stick: springs back to the centre.  pad: the thumb's place on the pad is the position.
+  // drag: distance and direction from where the thumb landed; kept after release.
+  var stick = $('stick'), knob = $('knob'), base = $('base'), stickId = null, ox = 0, oy = 0, mode = 'stick';
   function setStick(x, y) {
     var len = Math.sqrt(x * x + y * y);
-    if (len > 1) { x /= len; y /= len; len = 1; }
-    var r = base.offsetWidth * 0.28;
+    if (mode === 'pad') {
+      x = Math.max(-1, Math.min(1, x)); y = Math.max(-1, Math.min(1, y));
+    } else if (len > 1) { x /= len; y /= len; len = 1; }
+    var r = base.offsetWidth * (mode === 'pad' ? 0.42 : 0.28);
     knob.style.transform = 'translate(' + (x * r) + 'px,' + (y * r) + 'px)';
-    if (len < 0.1) x = y = 0;               // dead zone
+    if (mode !== 'pad' && len < 0.08) x = y = 0;               // dead zone
     if (x === state.x && y === state.y) return;
     state.x = x; state.y = y;
     send();
   }
-  function reach() { return base.offsetWidth * 0.36; }
+  function reach() { return base.offsetWidth * (mode === 'pad' ? 0.46 : mode === 'drag' ? 0.5 : 0.3); }
+  function setTouch(on) {
+    var was = !!(state.mask & SA.TOUCH);
+    if (was === on) return;
+    state.mask = on ? state.mask | SA.TOUCH : state.mask & ~SA.TOUCH;
+    send(true);
+  }
+  function setMode(m) {
+    if (m === mode) return;
+    releaseAll();
+    mode = m;
+    $('pad').setAttribute('data-mode', m);
+    state.x = state.y = 0;
+    knob.style.transform = '';
+    $('tilt').hidden = !tiltWanted || !window.DeviceOrientationEvent || !touch;
+    send(true);
+  }
   stick.addEventListener('pointerdown', function (e) {
     if (stickId !== null) return;
     e.preventDefault();
@@ -200,13 +226,23 @@
     var b = base.getBoundingClientRect();
     ox = b.left + b.width / 2; oy = b.top + b.height / 2;
     var dx = e.clientX - ox, dy = e.clientY - oy;
-    if (Math.sqrt(dx * dx + dy * dy) > b.width / 2) { ox = e.clientX; oy = e.clientY; }
+    if (mode === 'drag' || (mode === 'stick' && Math.sqrt(dx * dx + dy * dy) > b.width / 2)) { ox = e.clientX; oy = e.clientY; }
     setStick((e.clientX - ox) / reach(), (e.clientY - oy) / reach());
+    setTouch(true);
   });
-  stick.addEventListener('pointermove', function (e) {
+  function stickMove(e) {
     if (e.pointerId === stickId) setStick((e.clientX - ox) / reach(), (e.clientY - oy) / reach());
-  });
-  function stickUp(e) { if (e.pointerId === stickId) { stickId = null; setStick(0, 0); send(true); } }
+  }
+  // Raw updates arrive before the screen refresh where the browser has them.
+  stick.addEventListener('onpointerrawupdate' in window ? 'pointerrawupdate' : 'pointermove', stickMove);
+  function stickUp(e) {
+    if (e.pointerId !== stickId) return;
+    stickId = null;
+    if (mode === 'stick') setStick(0, 0);
+    else if (mode === 'drag') knob.style.transform = '';
+    if (!tiltOn) setTouch(false);
+    send(true);
+  }
   stick.addEventListener('pointerup', stickUp);
   stick.addEventListener('pointercancel', stickUp);
   stick.addEventListener('lostpointercapture', stickUp);
@@ -236,12 +272,14 @@
   });
   function releaseAll() {
     stickId = null;
-    setStick(0, 0);
+    held = {};
+    if (mode !== 'pad') setStick(0, 0);   // in drag mode a zero pull means "cancel"
+    setTouch(false);
     for (var i = 0; i < 4; i++) setButton(i, false);
   }
 
   // Keyboard, for trying the controller on a computer: arrows or WASD, and J K U I for A B X Y.
-  var held = {}, KEYS = { j: 0, k: 1, u: 2, i: 3 };
+  var KEYS = { j: 0, k: 1, u: 2, i: 3 };
   function onKey(e, down) {
     if ($('pad').hidden || e.ctrlKey || e.metaKey || e.altKey) return;
     var k = e.key.toLowerCase();
@@ -250,8 +288,42 @@
     if (!dir) return;
     e.preventDefault();
     held[dir] = down;
-    setStick((held.r ? 1 : 0) - (held.l ? 1 : 0), (held.d ? 1 : 0) - (held.u ? 1 : 0));
+    var x = (held.r ? 1 : 0) - (held.l ? 1 : 0), y = (held.d ? 1 : 0) - (held.u ? 1 : 0);
+    var any = held.r || held.l || held.d || held.u;
+    if (mode === 'stick') setStick(x, y);
+    else if (mode === 'drag' && any && down) setStick(x, y);
+    setTouch(!!any);
   }
+  setInterval(function () {     // arrow keys slide the pad position
+    if (mode !== 'pad' || !(held.r || held.l || held.d || held.u)) return;
+    setStick(state.x + ((held.r ? 1 : 0) - (held.l ? 1 : 0)) * 0.06, state.y + ((held.d ? 1 : 0) - (held.u ? 1 : 0)) * 0.06);
+  }, 16);
+
+  /* ---------- Tilt steering ---------- */
+  function onTilt(e) {
+    if (!tiltOn || stickId !== null || e.beta === null) return;
+    var angle = screen.orientation ? screen.orientation.angle : (window.orientation || 0);
+    var b = e.beta > 90 ? 180 - e.beta : e.beta < -90 ? -180 - e.beta : e.beta;
+    var lean = angle === 90 ? b : (angle === 270 || angle === -90) ? -b : e.gamma;
+    var x = Math.max(-1, Math.min(1, lean / 32));
+    setStick(Math.abs(x) < 0.06 ? 0 : x, 0);
+    setTouch(true);
+  }
+  function setTilt(on) {
+    tiltOn = on;
+    $('tilt').textContent = on ? 'Tilt on' : 'Tilt off';
+    $('tilt').setAttribute('aria-pressed', on ? 'true' : 'false');
+    if (on) addEventListener('deviceorientation', onTilt);
+    else { removeEventListener('deviceorientation', onTilt); if (mode === 'stick') setStick(0, 0); setTouch(false); }
+  }
+  $('tilt').onclick = function () {
+    if (tiltOn) return setTilt(false);
+    var D = window.DeviceOrientationEvent;
+    if (!D.requestPermission) return setTilt(true);
+    D.requestPermission().then(function (r) {
+      if (r === 'granted') setTilt(true); else toast('Motion access was refused.');
+    }).catch(function () { toast('Motion access was refused.'); });
+  };
   addEventListener('keydown', function (e) { onKey(e, true); });
   addEventListener('keyup', function (e) { onKey(e, false); });
 
@@ -268,7 +340,6 @@
       if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(function () {});
     }).catch(function () {});
   }
-  var touch = 'ontouchstart' in window;
   $('full').hidden = !(touch && document.documentElement.requestFullscreen);
   $('full').onclick = function () { if (document.fullscreenElement) document.exitFullscreen(); else goFull(); };
   document.addEventListener('visibilitychange', function () {
@@ -281,7 +352,7 @@
       if (joined && lastHeard < mark && $('cover').hidden) again('');
     }, 1500);
   });
-  addEventListener('blur', function () { held = {}; releaseAll(); });
+  addEventListener('blur', releaseAll);
   addEventListener('contextmenu', function (e) { if (!$('pad').hidden) e.preventDefault(); });
   document.addEventListener('gesturestart', function (e) { e.preventDefault(); });
   document.addEventListener('touchmove', function (e) { if (!$('pad').hidden) e.preventDefault(); }, { passive: false });

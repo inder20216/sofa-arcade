@@ -8,7 +8,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="css/controller.css?v=1">
+<link rel="stylesheet" href="css/controller.css?v=2">
 </head>
 <body>
 <main id="join" class="join">
@@ -27,6 +27,7 @@
   <header class="bar">
     <span id="badge" class="badge">1</span>
     <span class="who"><b id="pname"></b> <span id="ptitle"></span></span>
+    <button id="tilt" class="small" type="button" aria-pressed="false" hidden>Tilt off</button>
     <button id="full" class="small" type="button" hidden>Full screen</button>
     <button id="leave" class="small" type="button">Leave</button>
   </header>
@@ -46,9 +47,9 @@
 </main>
 
 <noscript>The controller needs JavaScript. Turn it on and reload.</noscript>
-<script src="vendor/peerjs.min.js?v=1"></script>
-<script src="js/config.js?v=1"></script>
-<script src="js/protocol.js?v=1"></script>
-<script src="js/controller.js?v=1"></script>
+<script src="vendor/peerjs.min.js?v=2"></script>
+<script src="js/config.js?v=2"></script>
+<script src="js/protocol.js?v=2"></script>
+<script src="js/controller.js?v=2"></script>
 </body>
 </html>

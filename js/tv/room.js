@@ -131,6 +131,7 @@
     player.received = player.missed = 0;
     player.lastSeen = performance.now();
     player.rtt = [];
+    player.path = null;
     player.median = player.p95 = null;
     player.lostAt = 0;
     if (old && old !== conn) old.close();
@@ -202,6 +203,7 @@
     var ping = now - this.lastPing > PING_EVERY;
     if (ping) {
       this.lastPing = now;
+      if (this.pingNo % 4 === 0) this.checkPaths();
       this.pingNo++;
       this.pings[this.pingNo] = now;
       delete this.pings[this.pingNo - 20];
@@ -223,6 +225,27 @@
     }
   };
 
+  // Is each phone connected directly, or through an internet relay (slow)?
+  Room.prototype.checkPaths = function () {
+    this.players().forEach(function (p) {
+      var pc = p.conn && p.conn.peerConnection;
+      if (p.status === 'off' || !pc || !pc.getStats) return;
+      pc.getStats().then(function (stats) {
+        var pair = null;
+        stats.forEach(function (s) {
+          if (s.type === 'transport' && s.selectedCandidatePairId && stats.get) pair = stats.get(s.selectedCandidatePairId);
+        });
+        if (!pair) stats.forEach(function (s) {
+          if (s.type === 'candidate-pair' && s.nominated && s.state === 'succeeded') pair = s;
+        });
+        if (!pair) return;
+        var local = stats.get(pair.localCandidateId), remote = stats.get(pair.remoteCandidateId);
+        var relay = (local && local.candidateType === 'relay') || (remote && remote.candidateType === 'relay');
+        p.path = relay ? 'relay' : 'direct';
+      }).catch(function () {});
+    });
+  };
+
   Room.prototype.sendFast = function (p, text) {
     if (p.fast && p.fast.readyState === 'open') {
       try { p.fast.send(text); } catch (e) {}
@@ -239,6 +262,8 @@
   };
   Room.prototype.buzz = function (p, pattern) { this.send(p, { t: 'buzz', p: pattern }); };
   Room.prototype.held = function (p, btn) { return !!(p.mask & (1 << btn)); };
+
+  Room.prototype.touching = function (p) { return !!(p.mask & SA.TOUCH); };
 
   window.Room = Room;
 })();

@@ -33,7 +33,7 @@
         ['Median', ms(p.median) + verdict(p.median, goal.median)],
         ['95%', ms(p.p95) + verdict(p.p95, goal.p95)],
         ['Lost', total ? (p.missed / total * 100).toFixed(1) + '%' : '-'],
-        ['Status', p.status === 'on' ? 'connected' : p.status === 'weak' ? 'weak signal' : 'disconnected']
+        ['Path', p.status === 'off' ? 'disconnected' : p.status === 'weak' ? 'weak signal' : p.path || '-']
       ].forEach(function (row, k) {
         var ry = y + 350 + k * 36;
         c.textAlign = 'left'; c.font = '500 24px ' + BODY; c.fillStyle = '#3d5868';
@@ -49,7 +49,7 @@
       c.textBaseline = 'middle'; c.textAlign = 'left'; c.fillStyle = '#ffffff';
       c.font = '700 54px ' + HEAD; c.fillText('Controller Check', 64, 72);
       c.font = '500 25px ' + BODY; c.fillStyle = '#a9c4d4';
-      c.fillText('Round-trip target: median ' + goal.median + ' ms or less, 95% ' + goal.p95 + ' ms or less. Press Y to pause or quit.', 64, 124);
+      c.fillText('Round-trip target: median ' + goal.median + ' ms or less, 95% ' + goal.p95 + ' ms or less. TV drawing: ' + Math.round(api.fps()) + ' fps. Y quits.', 64, 124);
       var ps = api.players();
       if (!ps.length) {
         c.font = '600 40px ' + HEAD; c.fillStyle = '#ffffff';
@@ -69,7 +69,7 @@
     id: 'controller-check',
     name: 'Controller Check',
     blurb: 'See each phone’s input and delay.',
-    layout: { title: 'Controller Check', buttons: ['A', 'B', 'X', 'Pause'], stick: 'Move' },
+    layout: { title: 'Controller Check', buttons: ['A', 'B', 'X', 'Pause'], stick: 'Move', mode: 'stick' },
     art: function (c, w, h) {
       c.fillStyle = '#eaf3f6'; c.fillRect(0, 0, w, h);
       c.fillStyle = '#b9ced9'; c.beginPath(); c.arc(w * 0.3, h * 0.5, h * 0.26, 0, 6.2832); c.fill();

@@ -6,6 +6,7 @@
  *
  * Fast messages
  *   "i,seq,x,y,mask,cA,cB,cX,cY"  phone -> TV  full controller state
+ *                                 mask bits 0-3 are A B X Y, bit 4 is "thumb is down"
  *   "p,n"                         TV -> phone  ping
  *   "q,n"                         phone -> TV  ping reply
  *
@@ -37,12 +38,12 @@
   }
 
   function cleanName(text) {
-    return String(text || '').replace(/[\u0000-\u001f\u007f‪-‮⁦-⁩]/g, '')
+    return String(text || '').replace(/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/g, '')
       .replace(/\s+/g, ' ').trim().slice(0, 12);
   }
 
   function encodeInput(s) {
-    return 'i,' + s.seq + ',' + s.x.toFixed(2) + ',' + s.y.toFixed(2) + ',' + s.mask + ',' + s.counts.join(',');
+    return 'i,' + s.seq + ',' + s.x.toFixed(3) + ',' + s.y.toFixed(3) + ',' + s.mask + ',' + s.counts.join(',');
   }
 
   // Returns null for anything malformed. The TV treats all phone data as untrusted.
@@ -54,19 +55,18 @@
     for (var i = 0; i < n.length; i++) if (!isFinite(n[i])) return null;
     var x = Math.max(-1, Math.min(1, n[1]));
     var y = Math.max(-1, Math.min(1, n[2]));
-    var len = Math.sqrt(x * x + y * y);
-    if (len > 1) { x /= len; y /= len; }
     return {
-      seq: n[0] >>> 0, x: x, y: y, mask: n[3] & 15,
+      seq: n[0] >>> 0, x: x, y: y, mask: n[3] & 31,
       counts: [n[4] & 255, n[5] & 255, n[6] & 255, n[7] & 255]
     };
   }
 
   window.SA = {
-    VERSION: 1,
+    VERSION: 2,
     PEER_PREFIX: 'sofa-arcade-v1-',
     CODE_LENGTH: CODE_LENGTH,
     BTN: { A: 0, B: 1, X: 2, Y: 3 },
+    TOUCH: 16,
     BTN_NAMES: ['A', 'B', 'X', 'Y'],
     FAST: { negotiated: true, id: 50, ordered: false, maxRetransmits: 0 },
     COLORS: ['#d63c48', '#2470d0', '#f0a61c', '#24834f'],

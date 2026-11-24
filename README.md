@@ -35,13 +35,15 @@ The default pairing server is the free public one, which has no uptime guarantee
 
 ## Controls
 
-| Phone | Air Hockey | Menus |
-|---|---|---|
-| Stick | Move | Browse |
-| A | Smash (press just before contact) | Select |
-| B | Dash | Back |
-| X | Cheer | |
-| Y | Pause | |
+| Phone | Air Hockey | Ghat Rally | Carrom | Menus |
+|---|---|---|---|---|
+| Left thumb | Position in your half | Steer (or Tilt) | Pull back and release | Browse |
+| A | Smash (just before contact) | Gas | | Select |
+| B | | Brake | Striker right | Back |
+| X | Cheer | Shove | Striker left | |
+| Y | Pause | Pause | Pause | |
+
+Carrom uses points rules: black 10, white 20, queen 50. The queen must be covered in the same shot or the next. Pocketing the striker costs 10.
 
 TV remote: arrows and OK in menus, Back or OK to pause. To try the controller on a computer, use the arrow keys and J, K, U, I for A, B, X, Y.
 
@@ -52,5 +54,6 @@ Create `js/games/my-game.js`, call `Games.register({...})` (the interface is des
 ## Third-party files
 
 - [PeerJS](https://peerjs.com) 1.5.4, MIT, transpiled for older TV browsers
+- [three.js](https://threejs.org) r149, MIT, transpiled; loads only when a 3D game opens
 - [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) 1.4.4, MIT
 - Barlow and Barlow Condensed fonts, SIL Open Font License 1.1
