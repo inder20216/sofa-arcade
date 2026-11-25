@@ -113,6 +113,8 @@
     },
     ko: function (t, v, o) { FX.crash(t, 1, o); voices(t + 0.05, 1, 240, 330, 0.45, 0.6, 1, [700, 1150], o); cheer(0.5); },
     horn: function (t, v, o) { [220, 277, 330].forEach(function (f) { tone(t, 'sawtooth', f, f, 0.8, 0.09, o, 0.03); }); },
+    toot: function (t, v, o) { var f = rand(330, 520); [f, f * 1.25].forEach(function (q) { tone(t, 'square', q, q, rand(0.15, 0.4), 0.05 * v, o, 0.01); }); },
+    challan: function (t, v, o) { tone(t, 'square', 660, 660, 0.12, 0.12, o); tone(t + 0.16, 'square', 440, 440, 0.3, 0.12, o); },
     goal: function (t, v, o) { FX.horn(t, v, o); cheer(1); },
     cheer: function () { cheer(0.6); },
     clap: function (t) { claps(t, 0.9, 22, 0.28, bus.crowd); voices(t, 3, 220, 400, 1.15, 0.5, 0.3, [780, 1250], bus.crowd); },
@@ -138,7 +140,7 @@
     var l = loops[name];
     if (!l) {
       if (!(level > 0) || !ready()) return;
-      var kind = { crowd: ['bandpass', 620, 0.6, 'crowd'], wind: ['highpass', 1500, 0.4, 'engine'], gravel: ['lowpass', 380, 0.8, 'engine'], skid: ['bandpass', 1150, 5, 'engine'] }[name];
+      var kind = { crowd: ['bandpass', 620, 0.6, 'crowd'], wind: ['highpass', 1500, 0.4, 'engine'], gravel: ['lowpass', 380, 0.8, 'engine'], skid: ['bandpass', 1150, 5, 'engine'], rain: ['highpass', 2600, 0.3, 'engine'] }[name];
       var s = ctx.createBufferSource(), f = ctx.createBiquadFilter();
       l = loops[name] = { g: ctx.createGain(), s: s, at: -1 };
       s.buffer = noise; s.loop = true; s.playbackRate.value = name === 'crowd' ? 0.7 : 1;
@@ -185,7 +187,7 @@
     if (!ctx) return;
     if (!list || !ready()) {
       Object.keys(engines).forEach(stopEngine);
-      ['wind', 'gravel', 'skid'].forEach(function (n) { loop(n, 0); });
+      ['wind', 'gravel', 'skid', 'rain'].forEach(function (n) { loop(n, 0); });
       return;
     }
     var t = ctx.currentTime, share = 1 / Math.sqrt(Math.max(1, list.length));
@@ -203,7 +205,7 @@
       if (e.p) e.p.pan.setTargetAtTime(c.pan || 0, t, 0.1);
     });
     Object.keys(engines).forEach(function (id) { if (!list.some(function (c) { return String(c.id) === id; })) stopEngine(id); });
-    ['wind', 'gravel', 'skid'].forEach(function (n) { loop(n, Math.round(((extra && extra[n]) || 0) * 100) / 100); });
+    ['wind', 'gravel', 'skid', 'rain'].forEach(function (n) { loop(n, Math.round(((extra && extra[n]) || 0) * 100) / 100); });
   }
 
   /* ---------- Music: four original loops ---------- */

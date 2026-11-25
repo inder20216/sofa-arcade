@@ -59,7 +59,8 @@
         openPause(p.name + ' left', 'The computer takes over.');
       }
     },
-    press: function (p, btn) { onPress(p, btn); }
+    press: function (p, btn) { onPress(p, btn); },
+    form: function (p, values) { if (game && game.form && !paused && !finished) game.form(p, values); }
   });
 
   function controllerUrl() {
@@ -138,7 +139,7 @@
   }
 
   /* ---------- Games ---------- */
-  var finished = false;
+  var finished = false, layoutNow = null;
   function startGame(g) {
     if (!room.players().some(function (p) { return p.status !== 'off'; })) {
       openSheet('Connect a phone first', 'Scan the QR code with a phone camera to join.', [['OK', closeSheet]], closeSheet);
@@ -150,6 +151,7 @@
     closeSheet();
     canvas.hidden = !!g.is3d; $('gl').hidden = $('hud').hidden = !g.is3d;
     $('home').hidden = true; $('stage').hidden = false;
+    layoutNow = g.layout;
     room.setLayout(g.layout);
     game = g.create({
       W: W, H: H, BTN: SA.BTN,
@@ -158,9 +160,12 @@
       touching: function (p) { return room.touching(p); },
       note: function (p, text) { room.send(p, { t: 'note', text: text }); },
       fps: function () { return fps; },
+      quality: function () { return level; },
+      shake: function () { return gfx.shake ? 1 : 0; },
       buzz: function (p, pattern) { room.buzz(p, pattern); },
       sound: Sound.play,
       say: Sound.say,
+      layout: function (l) { layoutNow = l; if ($('overlay').hidden) room.setLayout(l); },
       engines: Sound.engines,
       finish: function (r) {
         finished = true;
@@ -191,10 +196,15 @@
       openSheet('3D isn\u2019t available here', 'This browser can\u2019t draw 3D games. Try Chrome on a laptop connected to the TV.', [['OK', closeSheet]], closeSheet);
     }
     function begin() {
-      try { gl = new THREE.WebGLRenderer({ canvas: $('gl'), antialias: false, powerPreference: 'high-performance' }); }
-      catch (e) { return refuse(); }
+      try {
+        THREE.ColorManagement.legacyMode = false;
+        gl = new THREE.WebGLRenderer({ canvas: $('gl'), antialias: gfx.q !== 'low', powerPreference: 'high-performance' });
+      } catch (e) { return refuse(); }
       gl.autoClear = false;
-      size3d();
+      gl.outputEncoding = THREE.sRGBEncoding;
+      gl.shadowMap.enabled = true;
+      gl.shadowMap.type = THREE.PCFSoftShadowMap;
+      applyGfx();
       loading3d = false;
       closeSheet();
       startGame(g);
@@ -209,12 +219,31 @@
     document.body.appendChild(s);
     return false;
   }
+  // Graphics choice: auto, high or low. level 2 has shadows, 1 has none, 0 is simplest.
+  var gfx = { q: 'auto', shake: true }, level = 2;
+  try { Object.assign(gfx, JSON.parse(localStorage.getItem('sa-gfx') || '{}')); } catch (e) {}
+  function setGfx(key, value) {
+    gfx[key] = value;
+    try { localStorage.setItem('sa-gfx', JSON.stringify(gfx)); } catch (e) {}
+    applyGfx();
+  }
+  function applyGfx() {
+    level = gfx.q === 'low' ? 0 : 2; scale3d = gfx.q === 'low' ? 0.7 : 1; slowFor = 0;
+    if (gl) size3d();
+  }
   function size3d() { gl.setSize(Math.round(W * scale3d), Math.round(H * scale3d), false); }
   // Slow TVs get a lower 3D resolution so the controls stay responsive.
   var slowFor = 0;
   function adapt3d(dt) {
+    if (gfx.q !== 'auto') return;
     slowFor = fps < 42 ? slowFor + dt : 0;
-    if (slowFor > 2 && scale3d > 0.5) { scale3d = scale3d > 0.8 ? 0.7 : 0.5; slowFor = -2; size3d(); }
+    if (slowFor < 2 || (level === 0 && scale3d <= 0.5)) return;
+    slowFor = -2;
+    if (level === 2) level = 1;              // first drop shadows, then resolution, then detail
+    else if (scale3d > 0.8) scale3d = 0.7;
+    else if (level === 1) level = 0;
+    else scale3d = 0.5;
+    size3d();
   }
   function goHome() {
     endGame();
@@ -265,7 +294,7 @@
     if ($('overlay').hidden) return;
     $('overlay').hidden = true;
     sheetBack = null;
-    room.setLayout(game ? def.layout : HOME_LAYOUT);
+    room.setLayout(game ? layoutNow : HOME_LAYOUT);
     if (!game) ensureFocus();
   }
   function inMenu() { return !game || !$('overlay').hidden; }
@@ -353,6 +382,16 @@
       b.onclick = function () { Sound.set(a[0], !Sound.get(a[0])); };
       $('audio').appendChild(b);
     });
+    var q = el('button', 'toggle'), k = el('button', 'toggle');
+    q.type = k.type = 'button';
+    [q, k].forEach(function (b) { b.setAttribute('data-nav', ''); $('audio').appendChild(b); });
+    function label() {
+      q.textContent = 'Graphics ' + gfx.q; q.setAttribute('aria-pressed', 'true');
+      k.textContent = 'Shake ' + (gfx.shake ? 'on' : 'off'); k.setAttribute('aria-pressed', gfx.shake ? 'true' : 'false');
+    }
+    q.onclick = function () { setGfx('q', { auto: 'high', high: 'low', low: 'auto' }[gfx.q]); label(); };
+    k.onclick = function () { setGfx('shake', !gfx.shake); label(); };
+    label();
     Sound.listen(refreshAudio);
     refreshAudio();
   }

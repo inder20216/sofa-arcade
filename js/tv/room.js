@@ -92,6 +92,11 @@
       if (!player || player.conn !== conn) return;
       if (msg.t === 'in') self.fastMessage(player, msg.d); // fast channel unavailable
       else if (msg.t === 'leave') self.remove(player);
+      else if (msg.t === 'form' && msg.v && typeof msg.v === 'object') {
+        var clean = {};
+        Object.keys(msg.v).slice(0, 6).forEach(function (k) { clean[String(k).slice(0, 12)] = String(msg.v[k]).replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 80); });
+        self.on.form(player, clean);
+      }
     });
     conn.on('close', function () {
       clearTimeout(timer);

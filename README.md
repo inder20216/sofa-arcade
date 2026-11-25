@@ -37,13 +37,13 @@ The default pairing server is the free public one, which has no uptime guarantee
 
 ## Controls
 
-| Phone | Air Hockey | Ghat Rally | Carrom | Menus |
-|---|---|---|---|---|
-| Left thumb | Position in your half | Steer (or Tilt) | Pull back and release | Browse |
-| A | Smash (just before contact) | Gas | | Select |
-| B | | Brake | Striker right | Back |
-| X | Cheer | Hit a rival | Striker left | |
-| Y | Pause | Pause | Pause | |
+| Phone | Air Hockey | Ghat Rally | Carrom | Road Trip | Menus |
+|---|---|---|---|---|---|
+| Left thumb | Position in your half | Steer (or Tilt) | Pull back and release | Steer (or Tilt) | Browse |
+| A | Smash (just before contact) | Gas | | Gas | Select |
+| B | | Brake | Striker right | Brake, then reverse | Back |
+| X | Cheer | Hit a rival | Striker left | Autopilot | |
+| Y | Pause | Pause | Pause | Pause | |
 
 Ghat Rally: a hit scores 50 and the third hit knocks the rival down for 150 more. Finishing places add 400, 250, 150 and 75. Most points wins. The screen splits by itself: 2 players side by side, 3 or 4 in quarters.
 
@@ -54,6 +54,23 @@ TV remote: arrows and OK in menus, Back or OK to pause. To try the controller on
 ## Sound
 
 Music, engines, crowd and effects are synthesised in `js/tv/sound.js`, with no audio files. Browsers block sound until someone presses a key or clicks on the TV itself, so the TV shows a reminder until then. Sound, music and the announcer have switches on the home screen, and the pause menu has Mute. The announcer uses only voices installed on the device; many TVs have none.
+
+## Road Trip
+
+Type any start and destination on a phone (up to 1,200 km), or choose a preset. The road, distance, lanes, bridges, tolls and hills are real, the weather is the current weather, and driving takes real time. Quick mode runs time 10 times faster while everyone is on autopilot. Progress is saved in the TV's browser.
+
+- **Estimated:** traffic, most traffic signals, buildings, trees, and most hurdles.
+- **Hurdles:** potholes, speed breakers, cows, dogs, people crossing, police checks, roadworks, breakdowns.
+- **Challans:** amounts are game values. Real fines differ by state.
+- **Live traffic:** needs a TomTom key in `js/config.js`. This has not been tested. Restrict the key to your site, because the file is public.
+
+It sends place names and route positions to free public services: Photon (search), Valhalla at FOSSGIS (routes), Overpass (map features), Open-Meteo (weather) and Terrain Tiles on AWS. These have fair-use limits and no uptime guarantee, and Open-Meteo's free service is for non-commercial use. Use your own or paid services before a commercial launch. Map data (c) OpenStreetMap contributors, ODbL; keep the on-screen credit.
+
+Map features for some presets are stored in `js/games/roadtrip/data`. Presets without a file load them live.
+
+## Graphics
+
+The home screen has **Graphics** (auto, high, low) and **Shake**. Auto lowers shadows, resolution and detail when the TV is slow.
 
 ## Add a game
 

@@ -131,6 +131,7 @@
   function layout(m) {
     var names = Array.isArray(m.buttons) ? m.buttons : [];
     $('invite').hidden = m.invite !== true;
+    setForm(m.form);
     tiltWanted = m.tilt === true;
     if (!tiltWanted && tiltOn) setTilt(false);
     setMode(m.mode === 'pad' || m.mode === 'drag' ? m.mode : 'stick');
@@ -282,7 +283,7 @@
   // Keyboard, for trying the controller on a computer: arrows or WASD, and J K U I for A B X Y.
   var KEYS = { j: 0, k: 1, u: 2, i: 3 };
   function onKey(e, down) {
-    if ($('pad').hidden || e.ctrlKey || e.metaKey || e.altKey) return;
+    if ($('pad').hidden || !$('ask').hidden || e.ctrlKey || e.metaKey || e.altKey) return;
     var k = e.key.toLowerCase();
     if (KEYS[k] !== undefined) { setButton(KEYS[k], down); return; }
     var dir = { arrowleft: 'l', a: 'l', arrowright: 'r', d: 'r', arrowup: 'u', w: 'u', arrowdown: 'd', s: 'd' }[k];
@@ -356,13 +357,43 @@
   addEventListener('blur', releaseAll);
   addEventListener('contextmenu', function (e) { if (!$('pad').hidden) e.preventDefault(); });
   document.addEventListener('gesturestart', function (e) { e.preventDefault(); });
-  document.addEventListener('touchmove', function (e) { if (!$('pad').hidden) e.preventDefault(); }, { passive: false });
+  document.addEventListener('touchmove', function (e) { if (!$('pad').hidden && $('ask').hidden) e.preventDefault(); }, { passive: false });
 
   function leave() {
     if (conn && conn.open) { try { conn.send({ t: 'leave' }); } catch (e) {} }
     joined = false;
     setTimeout(function () { stop(''); }, 150);
   }
+  /* A game can ask for typed text, such as a route. */
+  var form = null;
+  function setForm(f) {
+    form = f && Array.isArray(f.fields) ? f : null;
+    $('type').hidden = !form;
+    $('ask').hidden = true;
+    if (!form) return;
+    $('type').textContent = String(form.button || 'Type').slice(0, 14);
+    $('ask-title').textContent = String(form.title || '').slice(0, 40);
+    $('ask-go').textContent = String(form.submit || 'OK').slice(0, 20);
+    $('ask-fields').textContent = '';
+    form.fields.slice(0, 4).forEach(function (q, i) {
+      var l = document.createElement('label'), n = document.createElement('input');
+      l.textContent = String(q.label || '').slice(0, 30); l.htmlFor = n.id = 'ask-' + i;
+      n.name = String(q.k || i).slice(0, 12); n.maxLength = 80; n.autocomplete = 'off'; n.placeholder = String(q.hint || '').slice(0, 40);
+      $('ask-fields').appendChild(l); $('ask-fields').appendChild(n);
+    });
+  }
+  $('type').onclick = function () { releaseAll(); $('ask').hidden = false; var n = $('ask-fields').querySelector('input'); if (n) n.focus(); };
+  $('ask-close').onclick = function () { $('ask').hidden = true; };
+  $('ask-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var v = {}, empty = null;
+    Array.prototype.forEach.call($('ask-fields').querySelectorAll('input'), function (n) { v[n.name] = n.value.trim(); if (!v[n.name] && !empty) empty = n; });
+    if (empty) return empty.focus();
+    if (conn && conn.open) { try { conn.send({ t: 'form', v: v }); } catch (err) {} }
+    if (document.activeElement) document.activeElement.blur();
+    $('ask').hidden = true;
+  });
+
   // Send the join link to someone whose camera can't scan the code.
   $('invite').onclick = function () {
     var here = location.href.split('#')[0].split('?')[0];

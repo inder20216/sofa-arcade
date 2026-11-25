@@ -41,11 +41,13 @@
 
   function buildWorld(track) {
     var scene = new THREE.Scene(), S = track.s, rnd = Kit3D.random(7);
-    scene.background = new THREE.Color('#a9cfe0');
-    scene.fog = new THREE.Fog('#a9cfe0', 220, 760);
-    scene.add(new THREE.HemisphereLight('#ffffff', '#6d8052', 0.85));
-    var sun = new THREE.DirectionalLight('#fff1d6', 0.55); sun.position.set(120, 200, 60); scene.add(sun);
-    var ground = new THREE.Mesh(new THREE.PlaneGeometry(3200, 3200), new THREE.MeshLambertMaterial({ color: '#6f9350' }));
+    scene.fog = new THREE.Fog('#c3d9e4', 160, 820);
+    scene.add(new THREE.HemisphereLight('#cfe4f5', '#7d7a4e', 0.62));
+    scene.userData.sky = Kit3D.sky(scene);
+    scene.userData.sky.color('low', scene.fog.color);
+    scene.userData.sun = Kit3D.sun(scene, 42);
+    scene.userData.sky.u.sun.value.copy(scene.userData.sun.userData.dir);
+    var ground = new THREE.Mesh(new THREE.PlaneGeometry(3200, 3200), Kit3D.grain(new THREE.MeshLambertMaterial({ color: '#6d9149' }), 0.9, 0.5));
     ground.rotation.x = -Math.PI / 2; ground.position.y = -1; scene.add(ground);
 
     // All road surfaces go into one mesh of side-by-side strips.
@@ -81,7 +83,9 @@
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
     g.computeVertexNormals();
-    scene.add(new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide })));
+    var surface = new THREE.Mesh(g, Kit3D.grain(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), 2.6, 0.34));
+    surface.receiveShadow = true; ground.receiveShadow = true;
+    scene.add(surface);
 
     function scatter(geo, count, min, size) {
       var mesh = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true }), count);
@@ -96,16 +100,21 @@
         mesh.setMatrixAt(placed++, o.matrix);
       }
       mesh.count = placed;
+      mesh.castShadow = true; mesh.receiveShadow = true;
       mesh.frustumCulled = false;
       scene.add(mesh);
     }
     scatter(Kit3D.merge([
-      { shape: 'cyl', size: [0.4, 0.5, 3, 5], at: [0, 1.5, 0], color: '#6b4d32' },
-      { shape: 'cone', size: [2.6, 5, 6], at: [0, 5, 0], color: '#3f7040' },
-      { shape: 'cone', size: [1.9, 4, 6], at: [0, 7.6, 0], color: '#4b8049' }]), 260, 40, 1.35);
+      { shape: 'cyl', size: [0.28, 0.42, 3, 6], at: [0, 1.5, 0], color: '#5d432d' },
+      { shape: 'cone', size: [2.6, 3.6, 8], at: [0, 3.9, 0], color: '#2f5f39' },
+      { shape: 'cone', size: [2.1, 3.2, 8], at: [0, 5.7, 0], color: '#386b41' },
+      { shape: 'cone', size: [1.4, 2.8, 8], at: [0, 7.4, 0], color: '#437a49' }]), 190, 40, 1.35);
+    scatter(Kit3D.merge([
+      { shape: 'cyl', size: [0.25, 0.4, 2.6, 6], at: [0, 1.3, 0], color: '#6b4d32' },
+      { shape: 'ball', size: [1.9, 1], at: [0, 3.6, 0], scale: [1, 0.85, 1], color: '#4f8038' }, { shape: 'ball', size: [1.4, 1], at: [1.1, 3.1, 0.4], color: '#477534' }, { shape: 'ball', size: [1.3, 1], at: [-1, 3.2, -0.5], color: '#5a8c40' }]), 110, 38, 1.2);
     scatter(Kit3D.merge([{ size: [3, 2.2, 2.6], at: [0, 0.8, 0], rot: [0.2, 0.4, 0.1], color: '#8b8a80' }]), 60, 38, 1.2);
 
-    var far = new THREE.MeshBasicMaterial({ color: '#7fa7b5', fog: false });
+    var far = new THREE.MeshBasicMaterial({ color: '#8fb0bd', fog: false });
     for (var m = 0; m < 16; m++) {
       var ang = m / 16 * 6.283, r = 900, h = 130 + rnd() * 150;
       var hill = new THREE.Mesh(new THREE.ConeGeometry(180 + rnd() * 130, h, 5), far);
@@ -121,39 +130,9 @@
     return scene;
   }
 
-  function carModel(color) {
-    var tyre = '#1d2124', glass = '#22384a', wheels = [];
-    [[-0.95, 1.25], [0.95, 1.25], [-0.95, -1.3], [0.95, -1.3]].forEach(function (w) {
-      wheels.push({ shape: 'cyl', size: [0.42, 0.42, 0.36, 10], at: [w[0], 0.42, w[1]], rot: [0, 0, Math.PI / 2], color: tyre });
-    });
-    return Kit3D.merge([
-      { size: [1.9, 0.55, 4.2], at: [0, 0.65, 0], color: color },
-      { size: [1.6, 0.5, 2], at: [0, 1.15, 0.25], color: glass },
-      { size: [1.5, 0.1, 1.7], at: [0, 1.44, 0.3], color: color },
-      { size: [1.95, 0.12, 0.4], at: [0, 1.2, 2], color: color },
-      { size: [0.5, 0.16, 0.1], at: [-0.6, 0.75, 2.12], color: '#ff5148' }, { size: [0.5, 0.16, 0.1], at: [0.6, 0.75, 2.12], color: '#ff5148' },
-      { size: [0.4, 0.16, 0.1], at: [-0.65, 0.72, -2.12], color: '#fff6d0' }, { size: [0.4, 0.16, 0.1], at: [0.65, 0.72, -2.12], color: '#fff6d0' }
-    ].concat(wheels));
-  }
-  function bikeModel(color) {
-    return Kit3D.merge([
-      { shape: 'cyl', size: [0.45, 0.45, 0.2, 12], at: [0, 0.45, -0.95], rot: [0, 0, Math.PI / 2], color: '#1d2124' },
-      { shape: 'cyl', size: [0.45, 0.45, 0.26, 12], at: [0, 0.45, 0.9], rot: [0, 0, Math.PI / 2], color: '#1d2124' },
-      { size: [0.4, 0.5, 1.3], at: [0, 0.85, -0.1], color: color },
-      { size: [0.34, 0.2, 0.9], at: [0, 1.0, 0.75], rot: [-0.25, 0, 0], color: color },
-      { size: [0.9, 0.08, 0.08], at: [0, 1.25, -0.65], color: '#30383d' },
-      { size: [0.12, 0.8, 0.12], at: [0, 0.8, -0.85], rot: [-0.35, 0, 0], color: '#8c979d' },
-      { size: [0.26, 0.12, 0.08], at: [0, 1.02, 1.22], color: '#ff5148' },
-      { size: [0.52, 0.7, 0.42], at: [0, 1.5, 0.2], rot: [0.45, 0, 0], color: '#22303a' },
-      { shape: 'cyl', size: [0.2, 0.24, 0.42, 8], at: [0, 2.02, -0.08], color: color },
-      { size: [0.16, 0.5, 0.6], at: [-0.28, 1.0, 0.2], color: '#22303a' }, { size: [0.16, 0.5, 0.6], at: [0.28, 1.0, 0.2], color: '#22303a' },
-      { size: [0.12, 0.12, 0.75], at: [-0.34, 1.45, -0.35], rot: [-0.35, 0, 0], color: '#22303a' }, { size: [0.12, 0.12, 0.75], at: [0.34, 1.45, -0.35], rot: [-0.35, 0, 0], color: '#22303a' }
-    ]);
-  }
-
   function create(api) {
     var track = makeTrack(), scene = buildWorld(track), L = track.L, o = {};
-    var mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+    var mat = Kit3D.paint(), sky = scene.userData.sky, sun = scene.userData.sun, fx = Kit3D.particles(scene), skid = Kit3D.skids(scene, 320), blobs = Kit3D.blobs(scene, 8), blob = Kit3D.dummy(), fxTime = 0;
     var racers = [], phase = 'pick', clock = 25, raceTime = 0, firstDone = 0, firstAny = 0, places = 0, over = false;
     var CPU = ['#8d6bc2', '#4aa3a3', '#b56a8e', '#7b858c'];
 
@@ -166,15 +145,16 @@
       };
       var color = p ? p.color : CPU[i];
       ['bike', 'car'].forEach(function (k) {
-        r.models[k] = new THREE.Mesh(k === 'bike' ? bikeModel(color) : carModel(color), mat);
+        r.models[k] = Kit3D.vehicle(k, color, mat);
         scene.add(r.models[k]);
       });
       racers.push(r);
     }
     function recolor(r) {
       ['bike', 'car'].forEach(function (k) {
-        r.models[k].geometry.dispose();
-        r.models[k].geometry = (k === 'bike' ? bikeModel : carModel)(r.p ? r.p.color : CPU[r.i]);
+        Kit3D.dropVehicle(r.models[k]);
+        r.models[k] = Kit3D.vehicle(k, r.p ? r.p.color : CPU[r.i], mat);
+        scene.add(r.models[k]);
       });
     }
     function humans() { return racers.filter(function (r) { return r.p; }); }
@@ -245,7 +225,7 @@
         if (r.psi * out > 0) r.psi *= -0.15;
         r.vd = 0;
         if (hit > 5 && r.hitWait <= 0) {
-          r.v *= 0.78; r.hitWait = 0.5;
+          r.v *= 0.78; r.hitWait = 0.5; r.burst = 'spark'; r.shake = Math.max(r.shake || 0, 0.75);
           if (r.p) { api.buzz(r.p, [90]); api.sound('crash', 1, panOf(r)); }
         }
         r.v -= r.v * 0.5 * dt;
@@ -265,7 +245,7 @@
         var side = back.d >= front.d ? 1 : -1;
         back.vd += side * 2.5;
       }
-      [a, b].forEach(function (r) { if (r.hitWait <= 0) { r.hitWait = 0.4; if (r.p) { api.buzz(r.p, [40]); api.sound('wall', 1, panOf(r)); } } });
+      [a, b].forEach(function (r) { if (r.hitWait <= 0) { r.hitWait = 0.4; r.burst = 'spark'; r.shake = Math.max(r.shake || 0, 0.45); if (r.p) { api.buzz(r.p, [40]); api.sound('wall', 1, panOf(r)); } } });
     }
 
     function finishCheck(r) {
@@ -350,11 +330,11 @@
       q.v *= 0.86; q.wob = 0.5; q.hp--;
       r.pts += HIT;
       if (q.hp > 0) {
-        pop(r, 'Hit +' + HIT); pop(q, 'Ouch');
+        pop(r, 'Hit +' + HIT); pop(q, 'Ouch'); q.burst = 'spark'; q.shake = 0.6; r.shake = Math.max(r.shake || 0, 0.3);
         api.sound('shove', 1, panOf(r));
       } else {
         r.pts += KNOCKOUT;
-        q.down = DOWN; q.fall = side;
+        q.down = DOWN; q.fall = side; q.burst = 'smoke'; q.shake = 1; r.shake = Math.max(r.shake || 0, 0.5);
         pop(r, 'Knockout +' + (HIT + KNOCKOUT)); pop(q, 'Knocked down');
         api.sound('ko', 1, panOf(q));
         if (r.p || q.p) api.say(who(r) + ' knocks down ' + who(q));
@@ -390,6 +370,26 @@
       api.engines(list, { wind: fast / 66 * 0.05, gravel: rough ? 0.1 + rough / 66 * 0.25 : 0, skid: slide > 0.8 ? Math.min(0.2, slide * 0.06) : 0 });
     }
 
+    // Dust, smoke, sparks and tyre marks.
+    function effects(dt) {
+      fxTime += dt;
+      if (fxTime < 0.033) return;
+      var step = fxTime; fxTime = 0;
+      racers.forEach(function (r) {
+        var sx = Math.sin(r.a), sz = -Math.cos(r.a), bx = r.x - sx * 1.4, bz = r.z - sz * 1.4, cx = Math.cos(r.a), cz = Math.sin(r.a);
+        if (r.rough && r.v > 6 && Math.random() < r.v / 40) fx.emit('dust', bx, r.y + 0.2, bz, -sx * 2, 0, -sz * 2, 1);
+        var brake = r.p && !r.place && api.held(r.p, api.BTN.B) && r.v > 12, hard = brake || (r.slide || 0) > 1.1 || (r.wob > 0 && r.v > 10);
+        if (hard && !r.rough) {
+          if (Math.random() < 0.5) fx.emit('smoke', bx, r.y + 0.15, bz, 0, 0, 0, 1);
+          (r.kind === 'car' ? [-0.8, 0.8] : [0]).forEach(function (w, n) { skid.mark(r.i + ':' + n, bx + cx * w, r.y, bz + cz * w, r.a, r.kind === 'car' ? 0.24 : 0.18); });
+        } else [0, 1].forEach(function (n) { skid.lift(r.i + ':' + n); });
+        if (r.down > 0 && r.v > 4) fx.emit('spark', r.x, r.y + 0.2, r.z, sx * r.v * 0.4, 1, sz * r.v * 0.4, 1);
+        if (r.burst) { fx.emit(r.burst, r.x, r.y + 0.8, r.z, sx * r.v * 0.6, 1, sz * r.v * 0.6, r.burst === 'spark' ? 14 : 8); r.burst = ''; }
+        r.shake = Math.max(0, (r.shake || 0) - step * 1.3);
+        if (r.rough && r.v > 12) r.shake = Math.max(r.shake, 0.22);
+      });
+      fx.update(step);
+    }
     function pose(r, dt) {
       track.at(r.t, o);
       r.x = o.x + Math.cos(o.a) * r.d; r.y = o.y; r.z = o.z + Math.sin(o.a) * r.d;
@@ -404,7 +404,7 @@
         var f = r.down > 0 ? Math.min(1, (DOWN - r.down) * 4, r.down * 2.5) : 0;
         if (f && k === 'car') m.rotation.y += f * Math.sin((DOWN - r.down) * 4) * 2;
         m.visible = !(r.safe > 0 && Math.floor(r.safe * 8) % 2);
-        m.rotation.z = k === 'bike' ? -r.lean * 0.55 * Math.min(1, r.v / 25) - r.swing * 0.5 - f * 1.35 * (r.fall || 1) : r.lean * 0.05;
+        Kit3D.moveVehicle(m, { v: r.v, steer: r.lean, lean: -r.lean * 0.6 * Math.min(1, r.v / 25) - r.swing * 0.5 - f * 1.35 * (r.fall || 1), hop: r.rough ? Math.sin(r.t * 1.7) * 0.05 * Math.min(1, r.v / 20) : 0 }, dt);
         if (k === 'bike' && f) m.position.y += 0.25 * f;
       });
     }
@@ -420,10 +420,12 @@
       }
       var want = r.ta + r.psi * 0.55;
       if (r.camA === null) r.camA = want;
-      r.camA += Math.atan2(Math.sin(want - r.camA), Math.cos(want - r.camA)) * Math.min(1, dt * 9);
+      r.camA += Math.atan2(Math.sin(want - r.camA), Math.cos(want - r.camA)) * (1 - Math.exp(-9 * dt));
       var back = 7 + r.v * 0.03, sx = Math.sin(r.camA), sz = -Math.cos(r.camA);
       c.position.set(r.x - sx * back, r.y + 3.1, r.z - sz * back);
       c.lookAt(r.x + sx * 9, r.y + 1.3, r.z + sz * 9);
+      c.rotateZ(-r.lean * 0.025 * Math.min(1, r.v / 30));
+      Kit3D.shake(c, (r.shake || 0) * api.shake(), raceTime);
       var fov = 62 + r.v * 0.2;
       if (Math.abs(c.fov - fov) > 0.3) { c.fov = fov; c.updateProjectionMatrix(); }
     }
@@ -439,6 +441,15 @@
     }
     function render(gl, w, h, dt) {
       racers.forEach(function (r) { pose(r, dt); });
+      if (phase === 'race' && !over) effects(dt);
+      var q = api.quality(), rich = q > 1;
+      if (sun.castShadow !== rich) sun.castShadow = rich;
+      sky.u.fancy.value = q > 0 ? 1 : 0; sky.u.time.value += dt;
+      blobs.count = rich ? 0 : racers.length;
+      if (!rich) {
+        racers.forEach(function (r, n) { blob.position.set(r.x, r.y + 0.04, r.z); blob.rotation.y = -r.a; blob.scale.set(r.kind === 'car' ? 2.6 : 1.3, 1, r.kind === 'car' ? 5 : 2.8); blob.updateMatrix(); blobs.setMatrixAt(n, blob.matrix); });
+        blobs.instanceMatrix.needsUpdate = true;
+      }
       gl.setScissorTest(false);
       gl.setClearColor('#0b2030'); gl.clear();
       gl.setScissorTest(true);
@@ -446,6 +457,8 @@
         var x = v.x * w, y = (1 - v.y - v.h) * h;
         gl.setViewport(x, y, v.w * w, v.h * h); gl.setScissor(x, y, v.w * w, v.h * h);
         aim(v.r, dt, (v.w * w) / (v.h * h));
+        sun.userData.follow(v.r.x, v.r.y, v.r.z, Math.sin(v.r.ta), -Math.cos(v.r.ta));
+        fx.view(v.r.cam, v.h * h);
         gl.render(scene, v.r.cam);
       });
     }

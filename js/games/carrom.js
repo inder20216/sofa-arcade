@@ -32,13 +32,13 @@
     for (i = 0; i < 8; i++) { c.beginPath(); c.moveTo(0, 0); c.lineTo(80, 10); c.lineTo(80, -10); c.closePath(); c.globalAlpha = 0.35; c.stroke(); c.globalAlpha = 1; c.rotate(Math.PI / 4); }
     c.fillStyle = '#15100c';
     [[1, 1], [1, -1], [-1, 1], [-1, -1]].forEach(function (p) { c.beginPath(); c.arc(p[0] * PO, p[1] * PO, PR, 0, 6.2832); c.fill(); });
-    return new THREE.CanvasTexture(cv);
+    return Kit3D.texture(cv);
   }
 
   function create(api) {
     var scene = new THREE.Scene(), table = new THREE.Group(), cam = new THREE.PerspectiveCamera(45, 16 / 9, 10, 4000);
     var coins = [], striker, seats = [], turn = 0, phase = 'aim', clock = TURN_TIME, acc = 0, shotTime = 0, over = false;
-    var posX = 0, pull = { x: 0, y: 0 }, wasTouch = false, think = 0, plan = null, angle = 0;
+    var posX = 0, pull = { x: 0, y: 0 }, wasTouch = false, fresh = false, think = 0, plan = null, angle = 0;
     var pocketed = [], foul = false, queenBy = null, banner = '', bannerFor = 0, soundWait = 0, spoken = -1;
 
     function disc(r, h, color, ring) {
@@ -46,17 +46,21 @@
         { shape: 'cyl', size: [r, r, h, 28], at: [0, h / 2, 0], color: color },
         { shape: 'cyl', size: [r * 0.62, r * 0.62, 0.8, 24], at: [0, h + 0.2, 0], color: ring },
         { shape: 'cyl', size: [r * 0.48, r * 0.48, 0.8, 24], at: [0, h + 0.5, 0], color: color }]);
-      var m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true }));
+      var m = new THREE.Mesh(g, new THREE.MeshPhongMaterial({ vertexColors: true, shininess: 70, specular: new THREE.Color('#555555') }));
+      m.castShadow = true; m.receiveShadow = true;
       table.add(m);
       return m;
     }
     var line, ghost;
     function build() {
       scene.background = new THREE.Color('#123047');
-      scene.add(new THREE.HemisphereLight('#ffffff', '#8a7a66', 0.8));
-      var lamp = new THREE.DirectionalLight('#fff4de', 0.5); lamp.position.set(200, 600, 100); scene.add(lamp);
+      scene.add(new THREE.HemisphereLight('#ffffff', '#8a7a66', 0.55));
+      var lamp = new THREE.DirectionalLight('#fff1d6', 0.75); lamp.position.set(-260, 620, -160); scene.add(lamp);
+      lamp.shadow.mapSize.set(1024, 1024);
+      var sc = lamp.shadow.camera; sc.left = sc.bottom = -480; sc.right = sc.top = 480; sc.near = 50; sc.far = 1400; lamp.shadow.bias = -0.002;
+      scene.userData.lamp = lamp;
       var top = new THREE.Mesh(new THREE.PlaneGeometry(B * 2, B * 2), new THREE.MeshLambertMaterial({ map: boardTexture() }));
-      top.rotation.x = -Math.PI / 2; table.add(top);
+      top.rotation.x = -Math.PI / 2; top.receiveShadow = true; table.add(top);
       var f = 56, edge = B + f / 2, wood = '#5b3318';
       table.add(new THREE.Mesh(Kit3D.merge([
         { size: [B * 2 + f * 2, 34, f], at: [0, 8, edge], color: wood }, { size: [B * 2 + f * 2, 34, f], at: [0, 8, -edge], color: wood },
@@ -104,7 +108,7 @@
       return { x: x, y: y };
     }
     function begin(n) {
-      turn = n; phase = 'aim'; clock = TURN_TIME; posX = 0; pull = { x: 0, y: 0 }; wasTouch = true; plan = null; think = 1.3;
+      turn = n; phase = 'aim'; clock = TURN_TIME; posX = 0; pull = { x: 0, y: 0 }; wasTouch = false; fresh = false; plan = null; think = 1.3;
       pocketed = []; foul = false;
       striker.in = true; striker.sink = 0; striker.vx = striker.vy = 0;
       if (blocked()) for (var d = 10; d < REACH; d += 10) { posX = d; if (!blocked()) break; posX = -d; if (!blocked()) break; }
@@ -127,11 +131,13 @@
 
     function aimHuman(dt) {
       var p = cur().p;
-      if (p.status !== 'on') { pull = { x: 0, y: 0 }; wasTouch = false; return; }
+      if (p.status !== 'on') { pull = { x: 0, y: 0 }; wasTouch = false; fresh = false; return; }
       var slide = (api.held(p, api.BTN.B) ? 1 : 0) - (api.held(p, api.BTN.X) ? 1 : 0);
       if (slide) posX = clamp(posX + slide * 190 * dt, -REACH, REACH);
       placeStriker();
       var touch = api.touching(p);
+      // The phone keeps its last pull after release, so wait until the thumb is up before accepting a new one.
+      if (!fresh) { if (!touch) fresh = true; return; }
       if (touch) pull = { x: p.x, y: p.y };
       else if (wasTouch) {
         pull = { x: p.x, y: p.y };
@@ -323,6 +329,7 @@
         line.scale.set(5, len, 1); line.position.set(0, 0, -len / 2 - SR);
         line.material.color.set(blocked() ? '#d63c48' : '#1f6fd0');
       }
+      scene.userData.lamp.castShadow = api.quality() > 1;
       gl.setScissorTest(false); gl.setViewport(0, 0, w, h); gl.clear();
       gl.render(scene, cam);
     }
@@ -336,7 +343,7 @@
         c.textAlign = 'left'; c.fillStyle = on ? '#12303f' : '#fff'; c.font = '600 32px ' + HEAD;
         c.fillText(name(s), 56, y - 20, 120);
         c.font = '500 22px Barlow, sans-serif'; c.fillStyle = on ? '#3d5868' : '#a9c4d4';
-        c.fillText(s.p && s.p.status === 'off' ? 'disconnected' : s === queenBy ? 'must cover queen' : on ? (phase === 'aim' && human() ? 'aiming, ' + Math.ceil(clock) + ' s' : 'playing') : '', 56, y + 20, 120);
+        c.fillText(s.p && s.p.status === 'off' ? 'disconnected' : s === queenBy ? 'must cover queen' : on ? (phase === 'aim' && human() ? 'aiming, ' + Math.ceil(clock) + ' s' : s.p ? 'playing' : 'its turn') : '', 56, y + 20, 120);
         c.textAlign = 'right'; c.font = '700 56px ' + HEAD; c.fillStyle = on ? '#12303f' : '#fff'; c.fillText(String(s.score), 230, y + 4);
       });
       c.textAlign = 'left'; c.font = '500 22px Barlow, sans-serif'; c.fillStyle = '#b4ccda';
@@ -367,7 +374,7 @@
         now.forEach(function (p) {
           if (seats.some(function (s) { return s.p === p; })) return;
           var spare = seats.filter(function (s) { return !s.p; })[0];
-          if (spare) { spare.p = p; wasTouch = false; }
+          if (spare) { spare.p = p; wasTouch = false; fresh = false; }
         });
       },
       destroy: function () { Kit3D.dispose(scene); },

@@ -8,7 +8,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="css/controller.css?v=4">
+<link rel="stylesheet" href="css/controller.css?v=6">
 </head>
 <body>
 <main id="join" class="join">
@@ -28,6 +28,7 @@
     <span id="badge" class="badge">1</span>
     <span class="who"><b id="pname"></b> <span id="ptitle"></span></span>
     <button id="invite" class="small" type="button" hidden>Invite</button>
+    <button id="type" class="small" type="button" hidden>Type route</button>
     <button id="tilt" class="small" type="button" aria-pressed="false" hidden>Tilt off</button>
     <button id="full" class="small" type="button" hidden>Full screen</button>
     <button id="leave" class="small" type="button">Leave</button>
@@ -44,13 +45,21 @@
   <div id="cover" class="cover" role="status" hidden>
     <div><h2 id="cover-title"></h2><p id="cover-text"></p><button id="cover-leave" type="button">Leave</button></div>
   </div>
+  <div id="ask" class="cover" hidden>
+    <form id="ask-form" class="card" novalidate>
+      <h2 id="ask-title"></h2>
+      <div id="ask-fields"></div>
+      <button type="submit" id="ask-go"></button>
+      <button type="button" id="ask-close" class="plain">Cancel</button>
+    </form>
+  </div>
   <div id="toast" class="toast" role="status" hidden></div>
 </main>
 
 <noscript>The controller needs JavaScript. Turn it on and reload.</noscript>
-<script src="vendor/peerjs.min.js?v=4"></script>
-<script src="js/config.js?v=4"></script>
-<script src="js/protocol.js?v=4"></script>
-<script src="js/controller.js?v=4"></script>
+<script src="vendor/peerjs.min.js?v=6"></script>
+<script src="js/config.js?v=6"></script>
+<script src="js/protocol.js?v=6"></script>
+<script src="js/controller.js?v=6"></script>
 </body>
 </html>
