@@ -33,7 +33,7 @@ If a phone can't scan the code, open `https://<user>.github.io/<repository>/j` o
 
 Anyone with the code can join while a seat is free. Select a player on the TV to remove them.
 
-The default pairing server is the free public one, which has no uptime guarantee. Set your own in `js/config.js` before a public launch. Some networks (often guest, hotel and office Wi-Fi) block devices from reaching each other. The public relay may help there, with more delay.
+The default pairing server is the free public one, which has no uptime guarantee. Set your own in `js/config.js` before a public launch. Some networks (often guest, hotel and office Wi-Fi) block devices from reaching each other. There is no working relay for these cases, so the TV and phones must share a network: the same Wi-Fi, or one phone's hotspot.
 
 ## Controls
 
@@ -45,11 +45,17 @@ The default pairing server is the free public one, which has no uptime guarantee
 | X | Cheer | Hit a rival | Striker left | Autopilot | |
 | Y | Pause | Pause | Pause | Pause | |
 
-Ghat Rally: a hit scores 50 and the third hit knocks the rival down for 150 more. Finishing places add 400, 250, 150 and 75. Most points wins. The screen splits by itself: 2 players side by side, 3 or 4 in quarters.
+Ghat Rally: choose a lap race (1 to 30 laps) or a long ride (5 to 60 km on a new road each time), and Easy, Medium or Hard. Hurdles can be Off, Some or Lots: potholes and speed breakers taken fast slow you down, and fallen rocks and cows each cost a heart. The screen warns you before each one. The TV remembers the last choice. A hit scores 50 and the third hit knocks the rival down for 150 more. Finishing places add 400, 250, 150 and 75, and more in longer races. Most points wins. The screen splits by itself: 2 players side by side, 3 or 4 in quarters.
 
 Carrom uses points rules: black 10, white 20, queen 50. The queen must be covered in the same shot or the next. Pocketing the striker costs 10.
 
 TV remote: arrows and OK in menus, Back or OK to pause. To try the controller on a computer, use the arrow keys and J, K, U, I for A, B, X, Y.
+
+## Full screen
+
+- **TV or laptop:** the first OK press or click on the TV itself turns on full screen. Browsers don't allow a phone's button to do it. Press F or use **Full screen** on the home screen to switch it.
+- **Android:** the controller goes full screen when you tap **Join**.
+- **iPhone:** Safari has no full screen for web pages. Tap **Share > Add to Home Screen** once, then open Sofa Arcade from the Home Screen and type the code.
 
 ## Sound
 

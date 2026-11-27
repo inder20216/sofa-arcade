@@ -172,5 +172,6 @@
     });
     Object.keys(M).forEach(function (k) { M[k].count = n[k]; M[k].instanceMatrix.needsUpdate = true; });
   };
+  Hurdles.SHAPES = SHAPES;      // Ghat Rally reuses these models
   window.TripHurdles = Hurdles;
 })();

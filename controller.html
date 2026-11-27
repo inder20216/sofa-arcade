@@ -7,8 +7,12 @@
 <meta name="theme-color" content="#123047">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Sofa Arcade">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="controller.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="css/controller.css?v=6">
+<link rel="stylesheet" href="css/controller.css?v=7">
 </head>
 <body>
 <main id="join" class="join">
@@ -20,6 +24,7 @@
     <input id="code" maxlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false" inputmode="text" enterkeyhint="go">
     <p id="error" class="error" role="alert"></p>
     <button id="go" type="submit">Join</button>
+    <button id="how-open" class="plain" type="button" hidden>Full screen on iPhone</button>
   </form>
 </main>
 
@@ -56,10 +61,23 @@
   <div id="toast" class="toast" role="status" hidden></div>
 </main>
 
+<div id="how" class="cover how" role="dialog" aria-labelledby="how-title" hidden>
+  <div class="card">
+    <h2 id="how-title">Full screen on iPhone</h2>
+    <p>iPhone only allows full screen from the Home Screen. Do this once:</p>
+    <ol>
+      <li>In Safari, tap <b>Share</b>. It may be inside the <b>&hellip;</b> menu.</li>
+      <li>Tap <b>Add to Home Screen</b>, then <b>Add</b>. If you see <b>Open as Web App</b>, keep it on.</li>
+      <li>Open <b>Sofa Arcade</b> from the Home Screen and type the code on the TV.</li>
+    </ol>
+    <button id="how-close" type="button">OK</button>
+  </div>
+</div>
+
 <noscript>The controller needs JavaScript. Turn it on and reload.</noscript>
-<script src="vendor/peerjs.min.js?v=6"></script>
-<script src="js/config.js?v=6"></script>
-<script src="js/protocol.js?v=6"></script>
-<script src="js/controller.js?v=6"></script>
+<script src="vendor/peerjs.min.js?v=7"></script>
+<script src="js/config.js?v=7"></script>
+<script src="js/protocol.js?v=7"></script>
+<script src="js/controller.js?v=7"></script>
 </body>
 </html>

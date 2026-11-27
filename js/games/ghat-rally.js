@@ -1,8 +1,25 @@
 /* Ghat Rally: 3D hill-road racing for 1 to 4 players on a split screen. Bikes and cars.
+ * Race types: laps of a circuit, or a long ride on a new road (ghat-ride.js). Three difficulty levels.
  * Hitting a rival scores points; three hits knock them down. Most points wins, and places add a bonus.
  */
 (function () {
-  var HALF = 8.5, WALL = 11.5, N = 900, LAPS = 3, FIELD = 4;
+  var HALF = 8.5, WALL = 11.5, N = 900, FIELD = 4;
+  var LAP_CHOICES = [1, 2, 3, 4, 5, 6, 8, 10, 15, 20, 30], KM_CHOICES = [5, 10, 20, 40, 60], SAVE = 'sa-ghat';
+  // cpu: computer speed. low, high: how far computers hold back or chase. fight: how often they hit. grip: bend
+  // left to the player (1 is all of it). slide: sideways drift. dirt: speed kept off the road. help: catch-up when behind.
+  var LEVELS = [
+    { name: 'Easy', about: 'Slower rivals, more steering help', cpu: 0.86, low: 0.86, high: 1.0, fight: 0.15, grip: 0.38, slide: 0.45, dirt: 0.75, help: 0.1 },
+    { name: 'Medium', about: 'Fair rivals who hit back', cpu: 1, low: 0.93, high: 1.06, fight: 0.45, grip: 0.6, slide: 1, dirt: 0.6, help: 0.05 },
+    { name: 'Hard', about: 'Fast rivals who hit often, slippery bends', cpu: 1.08, low: 0.98, high: 1.08, fight: 1.1, grip: 0.8, slide: 1.35, dirt: 0.45, help: 0 }
+  ];
+  var HURDLES = [
+    { name: 'Off', about: 'A clear road', every: 0 },
+    { name: 'Some', about: 'Potholes, speed breakers, fallen rocks, cows', every: 320 },
+    { name: 'Lots', about: 'Twice as many, so keep your eyes open', every: 160 }
+  ];
+  // Things on the road. l and w are half length and half width in metres. Hard ones cost a heart.
+  var BUMP = { pothole: { l: 0.6, w: 0.6 }, breaker: { l: 0.5, w: 99 }, rock: { l: 1.2, w: 1.1, hard: true }, cow: { l: 1.1, w: 0.7, hard: true }, sign: { l: 0, w: 0 } };
+  var WARN = { pothole: 'Potholes', breaker: 'Speed breaker', rock: 'Fallen rocks', cow: 'Cow on the road' };
   var POINTS = [[0, 0, 0], [140, -10, 0], [270, 20, 5], [385, 105, 13], [405, 235, 15], [315, 330, 9], [205, 300, 4],
     [110, 235, 6], [5, 270, 12], [-75, 360, 16], [-195, 385, 12], [-295, 295, 5], [-285, 165, 2], [-190, 75, 3], [-110, 15, 1]];
   var SPEC = {
@@ -12,6 +29,7 @@
   var HEAD = '"Barlow Condensed", sans-serif';
   var HIT = 50, KNOCKOUT = 150, BONUS = [400, 250, 150, 75], HEALTH = 3, DOWN = 1.9, SAFE = 3;
   var PLACE = ['1st', '2nd', '3rd', '4th'];
+  var DRIVE = { title: 'Ghat Rally', buttons: ['Gas', 'Brake', 'Hit', 'Pause'], stick: 'Steer', mode: 'stick', tilt: true };
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
   function mod(a, n) { return ((a % n) + n) % n; }
 
@@ -131,10 +149,160 @@
   }
 
   function create(api) {
-    var track = makeTrack(), scene = buildWorld(track), L = track.L, o = {};
-    var mat = Kit3D.paint(), sky = scene.userData.sky, sun = scene.userData.sun, fx = Kit3D.particles(scene), skid = Kit3D.skids(scene, 320), blobs = Kit3D.blobs(scene, 8), blob = Kit3D.dummy(), fxTime = 0;
-    var racers = [], phase = 'pick', clock = 25, raceTime = 0, firstDone = 0, firstAny = 0, places = 0, over = false;
+    var track = makeTrack(), scene = buildWorld(track), L = track.L, o = {}, long = null, goal = L, level = LEVELS[1];
+    var mat = Kit3D.paint(), sky, sun, fx, skid, blobs, blob = Kit3D.dummy(), fxTime = 0, idle = 0;
+    var set = { type: 0, laps: 2, km: 1, level: 1, hurdles: 1 }, row = 4, nav = {}, bumps = [], bumpMesh = null;
+    try { var old = JSON.parse(localStorage.getItem(SAVE)); if (old) set = { type: old.type ? 1 : 0, laps: clamp(old.laps | 0, 0, LAP_CHOICES.length - 1), km: clamp(old.km | 0, 0, KM_CHOICES.length - 1), level: clamp(old.level | 0, 0, 2), hurdles: old.hurdles == null ? 1 : clamp(old.hurdles | 0, 0, 2) }; } catch (e) {}
+    var racers = [], phase = 'setup', clock = 25, raceTime = 0, firstDone = 0, firstAny = 0, places = 0, over = false;
     var CPU = ['#8d6bc2', '#4aa3a3', '#b56a8e', '#7b858c'];
+
+    function dress() {
+      sky = scene.userData.sky; sun = scene.userData.sun;
+      fx = Kit3D.particles(scene); skid = Kit3D.skids(scene, 320); blobs = Kit3D.blobs(scene, 8);
+    }
+    dress();
+    // Metres from b to a along the road. On a circuit this ignores whole laps, so lapped riders still meet.
+    function gap(a, b) { var g = a.t - b.t; return long ? g : mod(g + L / 2, L) - L / 2; }
+    function laps() { return LAP_CHOICES[set.laps]; }
+    function minutes() { return Math.max(1, Math.round((set.type ? KM_CHOICES[set.km] * GhatRide.KM : laps() * L) / 52 / 60)); }
+    function rows() {
+      return [
+        ['Race', set.type ? 'Long ride' : 'Lap race', set.type ? 'A new mountain road, start to finish' : 'Laps of the hill circuit'],
+        set.type ? ['Distance', KM_CHOICES[set.km] + ' km', 'About ' + minutes() + ' min'] : ['Laps', String(laps()), 'About ' + minutes() + ' min'],
+        ['Difficulty', LEVELS[set.level].name, LEVELS[set.level].about],
+        ['Hurdles', HURDLES[set.hurdles].name, HURDLES[set.hurdles].about],
+        ['Start', '', '']
+      ];
+    }
+    function change(dir) {
+      if (row === 0) set.type = 1 - set.type;
+      else if (row === 1 && set.type) set.km = clamp(set.km + dir, 0, KM_CHOICES.length - 1);
+      else if (row === 1) set.laps = clamp(set.laps + dir, 0, LAP_CHOICES.length - 1);
+      else if (row === 2) set.level = clamp(set.level + dir, 0, 2);
+      else if (row === 3) set.hurdles = clamp(set.hurdles + dir, 0, 2);
+      else return;
+      api.sound('move');
+    }
+    function setupDone() {
+      try { localStorage.setItem(SAVE, JSON.stringify(set)); } catch (e) {}
+      level = LEVELS[set.level];
+      if (set.type) {
+        var old = scene;
+        racers.forEach(function (r) { ['bike', 'car'].forEach(function (k) { old.remove(r.models[k]); }); });
+        Kit3D.dispose(old);
+        track = GhatRide.makeTrack(KM_CHOICES[set.km] * GhatRide.KM, 1 + Math.floor(Math.random() * 1e6));
+        long = GhatRide.makeWorld(track, HALF, WALL);
+        scene = long.scene; L = goal = track.L;
+        racers.forEach(function (r) { ['bike', 'car'].forEach(function (k) { scene.add(r.models[k]); }); });
+        dress();
+        track.at(0, o);
+        long.keep([{ z: o.z }], true);
+      } else goal = laps() * L;
+      makeBumps();
+      if (bumps.length) buildBumps();
+      phase = 'pick'; clock = 25;
+      api.layout(DRIVE);
+      api.sound('join');
+      api.say((set.type ? KM_CHOICES[set.km] + ' kilometre ride' : laps() + (laps() > 1 ? ' laps' : ' lap')) + ', ' + level.name, true);
+    }
+
+    /* ---------- Hurdles ---------- */
+    // A circuit has the same hurdles every lap. A long ride gets new ones with its new road.
+    function makeBumps() {
+      bumps = [];
+      var every = HURDLES[set.hurdles].every, end = long ? goal - 150 : L - 60, q = {}, id = 0, n, m;
+      var rnd = Kit3D.random(long ? 1 + Math.floor(Math.random() * 1e6) : 11 + set.hurdles), s = 220;
+      function add(kind, at, d, more) { bumps.push(Object.assign({ id: id++, kind: kind, s: at, d: d, l: BUMP[kind].l, w: BUMP[kind].w, hard: !!BUMP[kind].hard }, more)); }
+      // Not on a sharp bend, so riders can see it coming.
+      function straight(at) { for (var x = -40; x <= 10; x += 10) if (Math.abs(track.at(at + x, q).k) > 0.012) return false; return true; }
+      while (every && (s += every * (0.6 + rnd() * 0.8)) < end) {
+        var pick = rnd(), side = rnd() < 0.5 ? -1 : 1;
+        if (pick < 0.22 && straight(s)) { add('breaker', s, 0); add('sign', s - 45, -(HALF + 1.4)); }
+        else if (pick < 0.4 && straight(s)) { add('cow', s, side * (HALF + 2), { dir: -side, wait: rnd() * 3, step: 0 }); add('sign', s - 60, -(HALF + 1.4)); }
+        else if (pick < 0.65 + set.level * 0.05) { for (n = 0, m = 2 + Math.floor(rnd() * 2); n < m; n++) add('rock', s + rnd() * 4 - 2, side * (1.4 + n * 2.3), { size: 0.45 + rnd() * 0.3, turn: rnd() * 6 }); }
+        else for (n = 0, m = 1 + Math.floor(rnd() * 3); n < m; n++) add('pothole', s + n * 3.5, (rnd() * 2 - 1) * (HALF - 1.4), { size: 0.7 + rnd() * 0.6 });
+      }
+    }
+    function buildBumps() {
+      var SH = TripHurdles.SHAPES, mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+      var parts = {
+        pothole: SH.pothole(), breaker: SH.breaker(), sign: SH.sign(), cow0: SH.cow0(), cow1: SH.cow1(),
+        rock: [{ size: [3, 2.2, 2.6], at: [0, 0.7, 0], rot: [0.2, 0.4, 0.1], color: '#8b8a80' }, { size: [1.4, 1.1, 1.3], at: [1.3, 0.35, 0.6], rot: [0.5, 0.2, 0.3], color: '#7d7b70' }]
+      };
+      bumpMesh = {};
+      Object.keys(parts).forEach(function (k) {
+        var mesh = new THREE.InstancedMesh(Kit3D.merge(parts[k]), mat, 60);
+        mesh.count = 0; mesh.frustumCulled = false; mesh.castShadow = k !== 'pothole' && k !== 'breaker'; mesh.receiveShadow = true;
+        bumpMesh[k] = mesh; scene.add(mesh);
+      });
+    }
+    // Metres from racer r to hurdle b.
+    function rel(b, r) { var g = b.s - r.t; return long ? g : mod(g + L / 2, L) - L / 2; }
+    var bo = null, bq = {};
+    function poseBumps() {
+      if (!bumpMesh) return;
+      bo = bo || Kit3D.dummy();
+      var n = {}, eyes = views().map(function (v) { return v.r; });
+      Object.keys(bumpMesh).forEach(function (k) { n[k] = 0; });
+      bumps.forEach(function (b) {
+        if (long && !eyes.some(function (r) { var g = rel(b, r); return g > -80 && g < 700; })) return;
+        var k = b.kind === 'cow' ? 'cow' + (b.wait > 0 ? 0 : Math.floor(b.step * 2.4) % 2) : b.kind, size = b.size || 1;
+        if (n[k] >= 60) return;
+        track.at(b.s, bq);
+        bo.position.set(bq.x + Math.cos(bq.a) * b.d, bq.y, bq.z + Math.sin(bq.a) * b.d);
+        bo.rotation.set(0, -bq.a + (b.kind === 'cow' ? (b.dir > 0 ? -Math.PI / 2 : Math.PI / 2) : b.turn || 0), 0);
+        if (b.kind === 'breaker') bo.scale.set(HALF * 2, 1, 1); else bo.scale.set(size, b.kind === 'pothole' ? 1 : size, size);
+        bo.updateMatrix(); bumpMesh[k].setMatrixAt(n[k]++, bo.matrix);
+      });
+      Object.keys(bumpMesh).forEach(function (k) { bumpMesh[k].count = n[k]; bumpMesh[k].instanceMatrix.needsUpdate = true; });
+    }
+    function bumpStep(dt) {
+      bumps.forEach(function (b) {
+        if (b.kind !== 'cow') return;
+        if (b.wait > 0) { b.wait -= dt; return; }
+        b.d += b.dir * 1.3 * dt; b.step += dt;
+        if (Math.abs(b.d) > HALF + 2) { b.d = (HALF + 2) * (b.d > 0 ? 1 : -1); b.dir = -b.dir; b.wait = 3 + Math.random() * 5; }
+      });
+      racers.forEach(function (r) {
+        var len = r.kind === 'car' ? 2.1 : 1.1, wide = SPEC[r.kind].wide * 0.7;
+        r.bumped = r.bumped || {};
+        bumps.forEach(function (b) {
+          if (b.kind === 'sign' || r.down) return;
+          if (Math.abs(rel(b, r)) > b.l + len || Math.abs(r.d - b.d) > b.w + wide) return;
+          if (raceTime - (r.bumped[b.id] || -9) < 2) return;
+          r.bumped[b.id] = raceTime;
+          bump(r, b);
+        });
+      });
+    }
+    function bump(r, b) {
+      var pan = panOf(r), side = r.d >= b.d ? 1 : -1;
+      if (b.kind === 'pothole') {
+        r.v *= r.kind === 'car' ? 0.9 : 0.85; r.wob = Math.max(r.wob, 0.25); r.hop = 0.6; r.shake = Math.max(r.shake || 0, 0.5);
+        if (r.p) { api.buzz(r.p, [50]); api.sound('wall', 0.7, pan); }
+      } else if (b.kind === 'breaker') {
+        var fast = r.v > 24;
+        r.hop = fast ? 1 : 0.4; r.shake = Math.max(r.shake || 0, fast ? 1 : 0.3);
+        if (fast) { r.v *= 0.55; r.wob = Math.max(r.wob, 0.5); pop(r, 'Too fast'); }
+        if (r.p) { api.buzz(r.p, fast ? [120] : [30]); api.sound(fast ? 'crash' : 'wall', fast ? 0.6 : 0.4, pan); }
+      } else {
+        if (r.safe > 0) return;
+        r.v *= b.kind === 'cow' ? 0.25 : 0.35; r.vd += side * 4; r.wob = Math.max(r.wob, 0.6); r.burst = 'spark'; r.shake = 1; r.hop = 0.5;
+        if (b.kind === 'cow') b.wait = Math.max(b.wait, 2);
+        r.hp--;
+        if (r.hp <= 0) { r.down = DOWN; r.fall = side; r.burst = 'smoke'; pop(r, 'Crashed'); if (r.p) api.say(r.p.name + ' crashes'); }
+        else pop(r, b.kind === 'cow' ? 'Mind the cow' : 'Rocks');
+        if (r.p) { api.buzz(r.p, [220]); api.sound('crash', 1, pan); }
+      }
+    }
+    function warn(r) {
+      var best = null, far = Math.max(60, r.v * 3.2);
+      bumps.forEach(function (b) {
+        var g = rel(b, r);
+        if (b.kind !== 'sign' && g > 3 && g < far && (b.kind !== 'cow' || Math.abs(b.d) < HALF + 1.5)) { far = g; best = b; }
+      });
+      return best ? WARN[best.kind] + ', ' + Math.round(far) + ' m' : '';
+    }
 
     for (var i = 0; i < FIELD; i++) addRacer(api.players()[i] || null, i);
     function addRacer(p, i) {
@@ -165,7 +333,7 @@
       now.forEach(function (p) {
         if (plays(p)) return;
         var spare = racers.filter(function (r) { return !r.p && !r.place; })[0];
-        if (spare) { spare.p = p; spare.ready = phase !== 'pick'; spare.camA = null; recolor(spare); }
+        if (spare) { spare.p = p; spare.ready = phase !== 'pick' && phase !== 'setup'; spare.camA = null; recolor(spare); }
       });
     }
     function order() {
@@ -181,25 +349,36 @@
       if (human) {
         steer = r.p.x * (0.45 + 0.55 * Math.abs(r.p.x));
         gas = api.held(r.p, api.BTN.A); brake = api.held(r.p, api.BTN.B);
+        if (level.help) { var first = racers.reduce(function (m, q) { return Math.max(m, q.t); }, -1e9); top *= 1 + clamp((first - r.t - 60) / 500, 0, 1) * level.help; }
       } else {
         var lead = humans().reduce(function (m, h) { return Math.max(m, h.t); }, -1e9);
-        top *= r.skill * clamp(1 + (lead - r.t) / 1500, 0.93, 1.06);
+        top *= r.skill * level.cpu * clamp(1 + (lead - r.t) / 1500, level.low, level.high);
         var ahead = track.at(r.t + 10 + r.v * 0.45, {}).k;
         var want = clamp(r.lane + clamp(ahead * 260, -3.5, 3.5), -6.5, 6.5);
-        steer = clamp((want - r.d) * 0.06 - r.psi * 1.9 + ahead * r.v * 0.35, -1, 1);
         var limit = Math.sqrt(40 / Math.max(0.001, Math.abs(ahead)));
+        // Slow for speed breakers and steer round everything else.
+        bumps.forEach(function (b) {
+          var g = rel(b, r);
+          if (b.kind === 'sign' || g < 0 || g > 14 + r.v * 1.4) return;
+          if (b.kind === 'breaker') { if (g < 40) limit = Math.min(limit, 20); return; }
+          var room = b.w + SPEC[r.kind].wide + 1;
+          if (Math.abs(want - b.d) < room) want = b.d + (want >= b.d ? 1 : -1) * room;
+          if (Math.abs(want) > 7) want = b.d - (want > 0 ? 1 : -1) * room;
+        });
+        want = clamp(want, -7, 7);
+        steer = clamp((want - r.d) * 0.06 - r.psi * 1.9 + ahead * r.v * 0.35, -1, 1);
         gas = r.v < limit; brake = r.v > limit + 6;
-        if (r.place) { gas = r.v < 25; brake = r.v > 30; }
+        if (r.place) { gas = r.v < 25; brake = r.v > 30; if (long && r.t > goal + 260) { gas = false; brake = true; } }
       }
       r.safe = Math.max(0, r.safe - dt); r.swing *= Math.exp(-7 * dt); r.popFor = Math.max(0, r.popFor - dt);
       if (r.down > 0) {
         r.down -= dt; gas = brake = false; steer = 0;
         r.v *= Math.exp(-2.2 * dt); r.psi *= Math.exp(-5 * dt);
         if (r.down <= 0) { r.down = 0; r.hp = HEALTH; r.safe = SAFE; }
-      } else if (!human && !r.place && r.shoveWait <= 0 && Math.random() < dt * 0.45) attack(r, true);
+      } else if (!human && !r.place && r.shoveWait <= 0 && Math.random() < dt * level.fight) attack(r, true);
       var rough = Math.abs(r.d) > HALF;
       r.gas = !!gas; r.rough = rough;
-      if (rough) top *= 0.6;
+      if (rough) top *= human ? level.dirt : 0.6;
       if (gas) r.v += spec.acc * Math.max(-1, 1 - Math.pow(r.v / top, 2)) * dt;
       else r.v -= 5 * dt;
       if (r.v > top) r.v -= (r.v - top) * 1.6 * dt;
@@ -209,9 +388,9 @@
       // Steering, with some help following the bend and straightening up.
       var rate = spec.turn * Math.min(1, r.v / 10) * (1 - 0.32 * r.v / spec.top);
       if (r.wob > 0) { r.wob -= dt; steer = steer * 0.35 + Math.sin(raceTime * 22) * 0.5; }
-      r.psi += steer * rate * dt - k * ds * 0.6 - r.psi * 1.5 * dt;
+      r.psi += steer * rate * dt - k * ds * (human ? level.grip : 0.6) - r.psi * 1.5 * dt;
       r.psi = clamp(r.psi, -0.8, 0.8);
-      var slide = Math.max(0, r.v * r.v * Math.abs(k) - 34) * 0.07;
+      var slide = Math.max(0, r.v * r.v * Math.abs(k) - 34) * 0.07 * (human ? level.slide : 1);
       r.slide = slide;
       r.d += (r.v * Math.sin(r.psi) + r.vd - (k > 0 ? slide : -slide)) * dt;
       r.vd *= Math.exp(-4 * dt);
@@ -234,7 +413,7 @@
 
     function contact(a, b) {
       if (a.down || b.down) return;
-      var dt = a.t - b.t, dd = a.d - b.d, wide = SPEC[a.kind].wide + SPEC[b.kind].wide;
+      var dt = gap(a, b), dd = a.d - b.d, wide = SPEC[a.kind].wide + SPEC[b.kind].wide;
       if (Math.abs(dt) > 3.8 || Math.abs(dd) > wide) return;
       if (Math.abs(dd) > wide * 0.5) {
         var s = dd > 0 ? 1 : -1, push = (wide - Math.abs(dd)) / 2;
@@ -249,7 +428,7 @@
     }
 
     function finishCheck(r) {
-      if (r.place || r.t < LAPS * L) return;
+      if (r.place || r.t < goal) return;
       r.place = ++places; r.time = raceTime;
       if (!firstAny) firstAny = raceTime;
       if (r.p) {
@@ -259,10 +438,24 @@
         if (!firstDone) firstDone = raceTime;
       }
     }
+    // Longer races give more chances to hit, so finishing places are worth more too.
+    function bonus(place) { return Math.round(BONUS[place - 1] * Math.max(1, goal / 6000) / 25) * 25; }
     function stopwatch(s) { return Math.floor(s / 60) + ':' + ('0' + (s % 60).toFixed(1)).slice(-4); }
 
     function update(dt) {
       if (over) return;
+      idle += dt;
+      if (phase === 'setup') {
+        if (!humans().length) return setupDone();
+        api.players().forEach(function (p) {
+          var v = !api.touching(p) ? '' : Math.abs(p.y) > 0.6 && Math.abs(p.y) >= Math.abs(p.x) ? (p.y > 0 ? 'd' : 'u') : Math.abs(p.x) > 0.6 ? (p.x > 0 ? 'r' : 'l') : '';
+          if (v === (nav[p.slot] || '')) return;
+          nav[p.slot] = v;
+          if (v === 'd' || v === 'u') { row = clamp(row + (v === 'd' ? 1 : -1), 0, 4); api.sound('move'); }
+          else if (v) change(v === 'r' ? 1 : -1);
+        });
+        return;
+      }
       if (phase === 'pick') {
         clock -= dt;
         racers.forEach(function (r) {
@@ -285,13 +478,14 @@
       var i, j;
       for (i = 0; i < racers.length; i++) drive(racers[i], dt);
       for (i = 0; i < racers.length; i++) for (j = i + 1; j < racers.length; j++) contact(racers[i], racers[j]);
+      if (bumps.length) bumpStep(dt);
       order().forEach(finishCheck);
       rev(dt);
       var hs = humans();
       var all = hs.length ? hs.every(function (r) { return r.place; }) : places === FIELD;
-      if (all || (firstDone && raceTime - firstDone > 30) || (firstAny && raceTime - firstAny > 150)) {
+      if (all || (firstDone && raceTime - firstDone > Math.max(30, firstDone * 0.12)) || (firstAny && raceTime - firstAny > Math.max(150, firstAny * 0.3))) {
         over = true;
-        racers.forEach(function (r) { if (r.place) r.pts += BONUS[r.place - 1]; });
+        racers.forEach(function (r) { if (r.place) r.pts += bonus(r.place); });
         var rank = order().sort(function (a, b) { return b.pts - a.pts || (a.place || 9) - (b.place || 9); });
         api.finish({
           title: who(rank[0]) + ' wins',
@@ -305,6 +499,7 @@
     function press(p, btn) {
       var r = racers.filter(function (q) { return q.p === p; })[0];
       if (!r) return;
+      if (phase === 'setup') { if (btn === api.BTN.A) { if (row === 4) setupDone(); else { row++; api.sound('move'); } } else if (btn === api.BTN.B && row > 0) { row--; api.sound('move'); } return; }
       if (phase === 'pick') { if (btn === api.BTN.A && !r.ready) { r.ready = true; api.sound('join'); api.buzz(p, [30]); } return; }
       if (phase === 'race' && btn === api.BTN.X && r.shoveWait <= 0 && !r.place && !r.down) attack(r, false);
     }
@@ -313,7 +508,7 @@
     function inReach(r) {
       var target = null, best = 1e9;
       racers.forEach(function (q) {
-        var dt = Math.abs(q.t - r.t), dd = Math.abs(q.d - r.d);
+        var dt = Math.abs(gap(q, r)), dd = Math.abs(q.d - r.d);
         if (q === r || q.down || q.safe || q.place) return;
         if (dt < 7 && dd < 5 && dt + dd < best) { best = dt + dd; target = q; }
       });
@@ -345,6 +540,18 @@
 
     // Engine sound for every racer. Rivals are heard only when close to a player.
     var revIn = 0;
+    function milestone(r) {
+      if (!long) {
+        var n = Math.floor(Math.max(0, r.t) / L) + 1;
+        if (n <= (r.lap || 1) || n > laps()) return;
+        r.lap = n;
+        if (n === laps()) { pop(r, 'Final lap'); api.say('Final lap, ' + r.p.name); } else pop(r, 'Lap ' + n + ' of ' + laps());
+        return;
+      }
+      var left = goal - r.t;
+      if (!r.half && left < goal / 2) { r.half = true; pop(r, 'Halfway'); }
+      if (!r.lastLap && left < GhatRide.KM) { r.lastLap = true; pop(r, 'Last kilometre'); api.say('Last kilometre, ' + r.p.name); }
+    }
     function panOf(r) {
       var v = views().filter(function (q) { return q.r === r; })[0];
       return v ? (v.x + v.w / 2 - 0.5) * 1.4 : 0;
@@ -359,9 +566,9 @@
         if (r.p) {
           fast = Math.max(fast, r.v); slide = Math.max(slide, r.slide || 0);
           if (r.rough && r.v > 5) rough = Math.max(rough, r.v);
-          if (!r.lastLap && r.t > (LAPS - 1) * L) { r.lastLap = true; api.say('Final lap, ' + r.p.name); }
+          if (phase === 'race' && !r.place) milestone(r);
         } else {
-          var near = hs.reduce(function (m, h) { return Math.min(m, Math.abs(h.t - r.t)); }, 1e9);
+          var near = hs.reduce(function (m, h) { return Math.min(m, Math.abs(gap(h, r))); }, 1e9);
           vol = Math.max(0, 1 - near / 45) * 0.6;
         }
         var gas = phase === 'count' ? (r.p ? api.held(r.p, api.BTN.A) : false) : r.gas;
@@ -394,25 +601,29 @@
       track.at(r.t, o);
       r.x = o.x + Math.cos(o.a) * r.d; r.y = o.y; r.z = o.z + Math.sin(o.a) * r.d;
       r.a = o.a + r.psi; r.ta = o.a;
+      var rise = Math.atan((track.at(r.t + 2, {}).y - track.at(r.t - 2, {}).y) / 4);
+      r.hop = Math.max(0, (r.hop || 0) - dt * 2.5);
+      var bounce = Math.abs(Math.sin(r.hop * 10)) * r.hop * 0.35;
       ['bike', 'car'].forEach(function (k) {
         var m = r.models[k];
         m.visible = r.kind === k;
         if (!m.visible) return;
         m.position.set(r.x, r.y, r.z);
         m.rotation.order = 'YXZ';
-        m.rotation.y = -r.a;
+        m.rotation.y = -r.a; m.rotation.x = rise;
         var f = r.down > 0 ? Math.min(1, (DOWN - r.down) * 4, r.down * 2.5) : 0;
         if (f && k === 'car') m.rotation.y += f * Math.sin((DOWN - r.down) * 4) * 2;
         m.visible = !(r.safe > 0 && Math.floor(r.safe * 8) % 2);
         Kit3D.moveVehicle(m, { v: r.v, steer: r.lean, lean: -r.lean * 0.6 * Math.min(1, r.v / 25) - r.swing * 0.5 - f * 1.35 * (r.fall || 1), hop: r.rough ? Math.sin(r.t * 1.7) * 0.05 * Math.min(1, r.v / 20) : 0 }, dt);
         if (k === 'bike' && f) m.position.y += 0.25 * f;
+        m.position.y += bounce;
       });
     }
     function aim(r, dt, aspect) {
       var c = r.cam;
       if (c.aspect !== aspect) { c.aspect = aspect; c.updateProjectionMatrix(); }
-      if (phase === 'pick') {
-        var w = 0.6 + Math.sin(clock * 0.6) * 0.5;
+      if (phase === 'pick' || phase === 'setup') {
+        var w = 0.6 + Math.sin(idle * 0.6) * 0.5;
         c.position.set(r.x + Math.sin(r.a + w) * 6.5, r.y + 2.4, r.z - Math.cos(r.a + w) * 6.5);
         c.lookAt(r.x, r.y + 0.9, r.z);
         r.camA = null;
@@ -432,6 +643,7 @@
 
     function views() {
       var hs = humans(), n = hs.length;
+      if (phase === 'setup') return [{ r: racers[0], x: 0, y: 0, w: 1, h: 1 }];
       if (!n) hs = [order()[0]];
       return hs.map(function (r, i) {
         if (n <= 1) return { r: r, x: 0, y: 0, w: 1, h: 1 };
@@ -441,6 +653,8 @@
     }
     function render(gl, w, h, dt) {
       racers.forEach(function (r) { pose(r, dt); });
+      if (long) long.keep(views().map(function (v) { return v.r; }), false);
+      poseBumps();
       if (phase === 'race' && !over) effects(dt);
       var q = api.quality(), rich = q > 1;
       if (sun.castShadow !== rich) sun.castShadow = rich;
@@ -457,6 +671,7 @@
         var x = v.x * w, y = (1 - v.y - v.h) * h;
         gl.setViewport(x, y, v.w * w, v.h * h); gl.setScissor(x, y, v.w * w, v.h * h);
         aim(v.r, dt, (v.w * w) / (v.h * h));
+        if (long) long.follow(v.r);
         sun.userData.follow(v.r.x, v.r.y, v.r.z, Math.sin(v.r.ta), -Math.cos(v.r.ta));
         fx.view(v.r.cam, v.h * h);
         gl.render(scene, v.r.cam);
@@ -470,6 +685,7 @@
     function draw(c) {
       var vs = views(), rank = order(), small = vs.length > 2;
       c.textBaseline = 'middle';
+      if (phase === 'setup') return drawSetup(c);
       vs.forEach(function (v) {
         var r = v.r, x = v.x * 1280, y = v.y * 720, w = v.w * 1280, h = v.h * 720, cx = x + w / 2;
         var big = small ? 54 : 76, pad = small ? 22 : 34;
@@ -480,14 +696,14 @@
           tag(c, r.ready ? 'Ready' : 'Left or right to switch. A when ready.', cx, y + h - (small ? 42 : 70), '600 ' + (small ? 28 : 36) + 'px ' + HEAD, '#fff', 'center');
           return;
         }
-        var at = rank.indexOf(r), lap = clamp(Math.floor(r.t / L) + 1, 1, LAPS);
+        var at = rank.indexOf(r), where = long ? (clamp(r.t, 0, goal) / GhatRide.KM).toFixed(1) + ' of ' + goal / GhatRide.KM + ' km' : 'Lap ' + clamp(Math.floor(r.t / L) + 1, 1, laps()) + ' of ' + laps();
         tag(c, PLACE[at], x + pad, y + pad + big * 0.3, '700 ' + big + 'px ' + HEAD);
         tag(c, r.pts + ' points', x + pad, y + pad + big * 0.3 + (small ? 44 : 62), '600 ' + (small ? 30 : 40) + 'px ' + HEAD, '#ffc53d');
         for (var hp = 0; hp < HEALTH; hp++) {
           c.fillStyle = hp < r.hp ? '#e0444f' : 'rgba(8,24,36,.6)';
           c.fillRect(x + w / 2 - 54 + hp * 37, y + pad - 2, 33, 12);
         }
-        tag(c, r.place ? stopwatch(r.time) : 'Lap ' + lap + ' of ' + LAPS, x + w - pad, y + pad + 14, '600 ' + (small ? 30 : 40) + 'px ' + HEAD, '#fff', 'right');
+        tag(c, r.place ? stopwatch(r.time) : where, x + w - pad, y + pad + 14, '600 ' + (small ? 30 : 40) + 'px ' + HEAD, '#fff', 'right');
         tag(c, Math.round(r.v * 3) + ' km/h', x + w - pad, y + h - pad - 6, '700 ' + (small ? 38 : 52) + 'px ' + HEAD, '#fff', 'right');
         if (r.p) {
           c.fillStyle = r.p.color; c.beginPath(); c.arc(x + pad + 12, y + h - pad - 6, 13, 0, 6.2832); c.fill();
@@ -499,6 +715,8 @@
         else if (r.popFor > 0) tag(c, r.pop, cx, y + h * 0.36, '700 ' + (small ? 52 : 78) + 'px ' + HEAD, /\+/.test(r.pop) ? '#ffc53d' : '#ffffff', 'center');
         else if (phase === 'race' && r.p && !r.down && r.shoveWait <= 0 && inReach(r)) tag(c, 'Press X to hit', cx, y + h * 0.36, '600 ' + (small ? 36 : 48) + 'px ' + HEAD, '#fff', 'center');
         else if (phase === 'race' && r.p && r.v < 2 && raceTime > 1.5) tag(c, 'Hold A to go', cx, y + h * 0.36, '600 ' + (small ? 40 : 54) + 'px ' + HEAD, '#fff', 'center');
+        var ahead = phase === 'race' && r.p && !r.place && !r.down ? warn(r) : '';
+        if (ahead) tag(c, ahead, cx, y + h * (small ? 0.24 : 0.2), '700 ' + (small ? 32 : 44) + 'px ' + HEAD, '#ffc53d', 'center');
       });
       c.fillStyle = '#0b2030';
       if (vs.length > 1) c.fillRect(638, 0, 4, 720);
@@ -506,7 +724,44 @@
       if (vs.length === 3) map(c, 960, 540, 300, rank);
       else if (vs.length === 1 && phase !== 'pick') map(c, 640, 632, 130, null);
     }
+    function drawSetup(c) {
+      c.fillStyle = 'rgba(8,24,36,.72)'; c.fillRect(0, 0, 1280, 720);
+      tag(c, 'Ghat Rally', 640, 72, '700 80px ' + HEAD, '#fff', 'center');
+      rows().forEach(function (q, i) {
+        var y = 146 + i * 100, on = i === row;
+        c.fillStyle = on ? '#ffc53d' : 'rgba(11,32,48,.88)'; c.fillRect(250, y, 780, 88);
+        c.textAlign = 'left';
+        if (i === 4) { c.textAlign = 'center'; c.fillStyle = on ? '#2a1c00' : '#fff'; c.font = '700 50px ' + HEAD; c.fillText('Start', 640, y + 46); return; }
+        c.fillStyle = on ? '#4a3500' : '#b4ccda'; c.font = '600 32px ' + HEAD; c.fillText(q[0], 284, y + 44);
+        c.fillStyle = on ? '#2a1c00' : '#fff'; c.font = '700 44px ' + HEAD; c.fillText(q[1], 500, y + 32);
+        c.fillStyle = on ? '#4a3500' : '#b4ccda'; c.font = '600 25px ' + HEAD; c.fillText(q[2], 500, y + 68);
+        if (on) {
+          c.fillStyle = '#2a1c00';
+          [[470, -1], [996, 1]].forEach(function (a) { c.beginPath(); c.moveTo(a[0] + a[1] * 14, y + 44); c.lineTo(a[0] - a[1] * 6, y + 27); c.lineTo(a[0] - a[1] * 6, y + 61); c.fill(); });
+        }
+      });
+      tag(c, 'Up and down to choose, left and right to change, A to continue', 640, 672, '600 32px ' + HEAD, '#fff', 'center');
+    }
+    // Where everyone is along a long ride.
+    function line(c, x, y, w) {
+      c.fillStyle = 'rgba(11,32,48,.82)'; c.fillRect(x - 18, y - 22, w + 36, 44);
+      c.fillStyle = '#a9c4d4'; c.fillRect(x, y - 3, w, 6); c.fillRect(x + w - 3, y - 12, 4, 24);
+      racers.forEach(function (r) {
+        c.fillStyle = r.p ? r.p.color : '#e6eef2'; c.strokeStyle = '#0b2030'; c.lineWidth = 2;
+        c.beginPath(); c.arc(x + w * clamp(r.t / goal, 0, 1), y, 9, 0, 6.2832); c.fill(); c.stroke();
+      });
+    }
+    function names(c, rank) {
+      rank.forEach(function (r, n) {
+        tag(c, (n + 1) + '. ' + who(r), 720 + (n % 2) * 280, 660 + Math.floor(n / 2) * 36, '600 28px ' + HEAD);
+      });
+    }
     function map(c, cx, cy, size, rank) {
+      if (long) {
+        if (!rank) return line(c, 440, 682, 400);
+        line(c, 720, 520, 480);
+        return names(c, rank);
+      }
       var s = size / 800;
       function px(x) { return cx + (x - 55) * s; }
       function py(z) { return cy + (z - 185) * s - (rank ? 40 : 0); }
@@ -519,22 +774,19 @@
         c.fillStyle = r.p ? r.p.color : '#e6eef2';
         c.beginPath(); c.arc(px(r.x), py(r.z), rank ? 9 : 5, 0, 6.2832); c.fill();
       });
-      if (!rank) return;
-      rank.forEach(function (r, n) {
-        tag(c, (n + 1) + '. ' + who(r), 720 + (n % 2) * 280, 660 + Math.floor(n / 2) * 36, '600 28px ' + HEAD);
-      });
+      if (rank) names(c, rank);
     }
 
     return {
       update: update, draw: draw, render: render, press: press, plays: plays, playersChanged: playersChanged,
-      destroy: function () { Kit3D.dispose(scene); },
-      state: function () { return { phase: phase, racers: racers, L: L, track: track, time: raceTime, over: over }; }
+      destroy: function () { if (long) long.dispose(); else Kit3D.dispose(scene); },
+      state: function () { return { set: set, row: row, goal: goal, level: level, long: long, phase: phase, racers: racers, L: L, track: track, time: raceTime, over: over, bumps: bumps }; }
     };
   }
 
   Games.register({
-    id: 'ghat-rally', name: 'Ghat Rally', music: 'rally', crowd: 0.35, blurb: '3D race. Hit rivals for points.', is3d: true,
-    layout: { title: 'Ghat Rally', buttons: ['Gas', 'Brake', 'Hit', 'Pause'], stick: 'Steer', mode: 'stick', tilt: true },
+    id: 'ghat-rally', name: 'Ghat Rally', music: 'rally', crowd: 0.35, blurb: 'Lap race or long ride, with hurdles. Hit rivals for points.', is3d: true,
+    layout: { title: 'Ghat Rally', buttons: ['Select', 'Back', '', 'Pause'], stick: 'Choose', mode: 'stick' },
     art: function (c, w, h) {
       c.fillStyle = '#a9cfe0'; c.fillRect(0, 0, w, h);
       c.fillStyle = '#7fa7b5'; c.beginPath(); c.moveTo(0, h * 0.5); c.lineTo(w * 0.28, h * 0.16); c.lineTo(w * 0.52, h * 0.46); c.lineTo(w * 0.76, h * 0.22); c.lineTo(w, h * 0.5); c.fill();

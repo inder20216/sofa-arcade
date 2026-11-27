@@ -96,7 +96,7 @@
     $('go').disabled = false; $('go').textContent = 'Join';
     $('error').textContent = text || '';
     releaseAll();
-    if (document.fullscreenElement) document.exitFullscreen().catch(function () {});
+    leaveFull();
   }
 
   function onMessage(m) {
@@ -283,7 +283,7 @@
   // Keyboard, for trying the controller on a computer: arrows or WASD, and J K U I for A B X Y.
   var KEYS = { j: 0, k: 1, u: 2, i: 3 };
   function onKey(e, down) {
-    if ($('pad').hidden || !$('ask').hidden || e.ctrlKey || e.metaKey || e.altKey) return;
+    if ($('pad').hidden || !$('ask').hidden || !$('how').hidden || e.ctrlKey || e.metaKey || e.altKey) return;
     var k = e.key.toLowerCase();
     if (KEYS[k] !== undefined) { setButton(KEYS[k], down); return; }
     var dir = { arrowleft: 'l', a: 'l', arrowright: 'r', d: 'r', arrowup: 'u', w: 'u', arrowdown: 'd', s: 'd' }[k];
@@ -335,15 +335,30 @@
     if (!navigator.wakeLock || document.hidden) return;
     navigator.wakeLock.request('screen').then(function (l) { lock = l; }).catch(function () {});
   }
+  // iPhone browsers have no full screen for pages. There, adding the controller to the Home Screen does the job.
+  var html = document.documentElement, askFull = html.requestFullscreen || html.webkitRequestFullscreen;
+  var app = navigator.standalone === true || (window.matchMedia && (matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches));
+  var byHome = !askFull && !app && touch && /iPhone|iPod|iPad|Macintosh/.test(navigator.userAgent);
+  function isFull() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+  function leaveFull() {
+    if (!isFull()) return;
+    var r = (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    if (r && r.catch) r.catch(function () {});
+  }
   function goFull() {
-    var d = document.documentElement;
-    if (!d.requestFullscreen) return;
-    d.requestFullscreen().then(function () {
+    if (!askFull || app) return;
+    var r;
+    try { r = askFull.call(html); } catch (e) { return; }
+    if (r && r.then) r.then(function () {
       if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(function () {});
     }).catch(function () {});
   }
-  $('full').hidden = !(touch && document.documentElement.requestFullscreen);
-  $('full').onclick = function () { if (document.fullscreenElement) document.exitFullscreen(); else goFull(); };
+  function showHow(on) { releaseAll(); $('how').hidden = !on; }
+  $('full').hidden = !(touch && !app && (askFull || byHome));
+  $('full').onclick = function () { if (!askFull) showHow(true); else if (isFull()) leaveFull(); else goFull(); };
+  $('how-open').hidden = !byHome;
+  $('how-open').onclick = function () { showHow(true); };
+  $('how-close').onclick = function () { showHow(false); };
   document.addEventListener('visibilitychange', function () {
     releaseAll();
     if (document.hidden || !joined) return;
@@ -357,7 +372,7 @@
   addEventListener('blur', releaseAll);
   addEventListener('contextmenu', function (e) { if (!$('pad').hidden) e.preventDefault(); });
   document.addEventListener('gesturestart', function (e) { e.preventDefault(); });
-  document.addEventListener('touchmove', function (e) { if (!$('pad').hidden && $('ask').hidden) e.preventDefault(); }, { passive: false });
+  document.addEventListener('touchmove', function (e) { if (!$('pad').hidden && $('ask').hidden && $('how').hidden) e.preventDefault(); }, { passive: false });
 
   function leave() {
     if (conn && conn.open) { try { conn.send({ t: 'leave' }); } catch (e) {} }

@@ -359,6 +359,8 @@
     var k = e.keyCode, first = !unlockedOnce && !$('sound-chip').hidden;
     unlockedOnce = true;
     Sound.unlock();
+    if (k === 13 || k === 32 || (k >= 37 && k <= 40)) autoFull(document.activeElement);
+    if (k === 70 && canFull() && !e.ctrlKey && !e.altKey && !e.metaKey && !e.repeat) { fullBtn.click(); return; }
     // The first OK press in a game only turns the sound on.
     if (first && k === 13 && !inMenu()) { e.preventDefault(); return; }
     if (e.ctrlKey || e.altKey || e.metaKey) return;
@@ -371,6 +373,33 @@
   });
   ['pointerdown', 'click', 'touchend'].forEach(function (n) { document.addEventListener(n, Sound.unlock); });
 
+  /* ---------- Full screen ---------- */
+  // Browsers allow this only straight after a key or click on the TV itself, not from a phone's button.
+  var fullBtn = null, wantFull = true, root = document.documentElement;
+  try { wantFull = localStorage.getItem('sa-full') !== 'no'; } catch (e) {}
+  function saveFull() { try { localStorage.setItem('sa-full', wantFull ? 'yes' : 'no'); } catch (e) {} }
+  function canFull() { return !!(root.requestFullscreen || root.webkitRequestFullscreen); }
+  function isFull() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+  function quiet(r) { if (r && r.catch) r.catch(function () {}); }
+  function goFull() { try { quiet((root.requestFullscreen || root.webkitRequestFullscreen).call(root)); } catch (e) {} }
+  function leaveFull() { try { quiet((document.exitFullscreen || document.webkitExitFullscreen).call(document)); } catch (e) {} }
+  function labelFull() {
+    var on = isFull();
+    fullBtn.textContent = 'Full screen ' + (on ? 'on' : 'off');
+    fullBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  }
+  function autoFull(target) {
+    if (wantFull && canFull() && !isFull() && target !== fullBtn && $('phone-notice').hidden) goFull();
+  }
+  ['fullscreenchange', 'webkitfullscreenchange'].forEach(function (n) {
+    document.addEventListener(n, function () {
+      labelFull();
+      // Leaving with Esc means "not now": don't force it back on the next click.
+      if (!isFull()) wantFull = false;
+    });
+  });
+  document.addEventListener('click', function (e) { if (e.isTrusted && e.detail) autoFull(e.target); }, true);
+
   /* ---------- Sound settings ---------- */
   var unlockedOnce = false;
   var AUDIO = [['muted', 'Sound', true], ['music', 'Music', false], ['voice', 'Announcer', false]];
@@ -382,6 +411,10 @@
       b.onclick = function () { Sound.set(a[0], !Sound.get(a[0])); };
       $('audio').appendChild(b);
     });
+    fullBtn = el('button', 'toggle');
+    fullBtn.type = 'button';
+    fullBtn.setAttribute('data-nav', '');
+    fullBtn.onclick = function () { wantFull = !isFull(); saveFull(); if (wantFull) goFull(); else leaveFull(); };
     var q = el('button', 'toggle'), k = el('button', 'toggle');
     q.type = k.type = 'button';
     [q, k].forEach(function (b) { b.setAttribute('data-nav', ''); $('audio').appendChild(b); });
@@ -392,6 +425,7 @@
     q.onclick = function () { setGfx('q', { auto: 'high', high: 'low', low: 'auto' }[gfx.q]); label(); };
     k.onclick = function () { setGfx('shake', !gfx.shake); label(); };
     label();
+    if (canFull()) { $('audio').appendChild(fullBtn); labelFull(); }
     Sound.listen(refreshAudio);
     refreshAudio();
   }
